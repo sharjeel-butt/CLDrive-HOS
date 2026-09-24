@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\sharj\\.ohos\\config\\default_CLDrive_PDE_I6Cc0kuyk-Ut1VUuraiDIAsE6pvNdiDAfJJTytM=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BA2262D8E3198B088227D7C964B8081D1C5B65598B222AD513B64B0F3EF0B9303718F1E17A65C15",
+          "profile": "C:\\Users\\sharj\\.ohos\\config\\default_CLDrive_PDE_I6Cc0kuyk-Ut1VUuraiDIAsE6pvNdiDAfJJTytM=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\sharj\\.ohos\\config\\default_CLDrive_PDE_I6Cc0kuyk-Ut1VUuraiDIAsE6pvNdiDAfJJTytM=.p12",
+          "storePassword": "0000001B773FCB45817DFC1C4C8F538E6436F9CD20B3A68789E18AD518D32AA8822263B35ADC95E0965761"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",

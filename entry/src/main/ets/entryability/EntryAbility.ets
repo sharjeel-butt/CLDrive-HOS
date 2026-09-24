@@ -1,49 +1,67 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
-import { hilog } from '@kit.PerformanceAnalysisKit';
+import { AbilityConstant, UIAbility, Want, Configuration } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
+import { AuthManager } from '../core/auth/AuthManager';
+import { AccountStore } from '../core/auth/AccountStore';
+import { ThemeManager } from '../core/theme/ThemeManager';
+import { Routes } from '../utils/RouteConstants';
+import { Logger } from '../utils/Logger';
 
-const DOMAIN = 0x0000;
+const TAG: string = 'EntryAbility';
 
 export default class EntryAbility extends UIAbility {
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
+    Logger.info(TAG, 'onCreate');
+  }
+
+  async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
+    Logger.info(TAG, 'onWindowStageCreate');
+
+    // Initialise persistent stores.
+    await AccountStore.init(this.context);
+
+    // Initialise theme (loads persisted choice + applies to system).
+    await ThemeManager.get().init(this.context);
+
+    // Decide entry page.
+    let target: string = Routes.ONBOARDING;
+    try {
+      const hasAccounts: boolean = await AuthManager.hasAccounts();
+      target = hasAccounts ? Routes.FILE_BROWSER : Routes.ONBOARDING;
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `Auth check failed: ${err.message}`);
+    }
+
+    Logger.info(TAG, `Loading entry page: ${target}`);
+
+    windowStage.loadContent(target)
+      .then(() => {
+        Logger.info(TAG, `Loaded ${target}`);
+      })
+      .catch((e: Error) => {
+        Logger.error(TAG, `loadContent failed: ${e.message}`);
+      });
+  }
+
+  /**
+   * Called by the system when the device theme flips (or when our own
+   * setColorMode takes effect). Keeps ThemeManager in sync.
+   */
+  onConfigurationUpdate(newConfig: Configuration): void {
+    Logger.info(TAG, `onConfigurationUpdate colorMode=${newConfig.colorMode}`);
+    ThemeManager.get().onSystemColorModeChanged(newConfig.colorMode);
   }
 
   onDestroy(): void {
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
-  }
-
-  onWindowStageCreate(windowStage: window.WindowStage): void {
-    // Main window is created, set main page for this ability
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-
-    windowStage.loadContent('pages/Index', (err) => {
-      if (err.code) {
-        hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
-        return;
-      }
-      hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
-    });
-
-    try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-    } catch (err) {
-      hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
-    }
-  }
-
-  onWindowStageDestroy(): void {
-    // Main window is destroyed, release UI related resources
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+    Logger.info(TAG, 'onDestroy');
   }
 
   onForeground(): void {
-    // Ability has brought to foreground
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
+    Logger.info(TAG, 'onForeground');
   }
 
   onBackground(): void {
-    // Ability has back to background
-    hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+    Logger.info(TAG, 'onBackground');
   }
 }

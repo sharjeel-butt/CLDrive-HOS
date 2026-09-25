@@ -20,6 +20,27 @@ export enum OperationStatus {
   CANCELLED = 'cancelled'
 }
 
+/**
+ * Everything needed to re-execute a failed operation.
+ * Only the fields relevant to the operation's type are populated.
+ */
+export interface RetryPayload {
+  /** DELETE: the cloud item ID (also mirrored in Operation.itemId). */
+  itemId?: string;
+
+  /** UPLOAD: the destination folder ID and the local file URI. */
+  parentId?: string;
+  localUri?: string;
+
+  /** MOVE / COPY: the destination folder ID. */
+  targetFolderId?: string;
+  /** MOVE / COPY: pre-resolved name, if the user chose Keep Both. */
+  finalName?: string;
+
+  /** DOWNLOAD: the picker-provided destination URI. */
+  targetUri?: string;
+}
+
 export interface Operation {
   id: string;
   type: OperationType;
@@ -33,6 +54,8 @@ export interface Operation {
   batchIndex: number;
   batchTotal: number;
   errorMessage: string;
+  /** Present when the operation can be retried. */
+  retryPayload?: RetryPayload;
 }
 
 export function createOperation(
@@ -42,7 +65,8 @@ export function createOperation(
   itemId: string,
   itemKind: OperationItemKind,
   batchIndex: number,
-  batchTotal: number
+  batchTotal: number,
+  retryPayload?: RetryPayload
 ): Operation {
   return {
     id,
@@ -56,7 +80,8 @@ export function createOperation(
     completedAt: 0,
     batchIndex,
     batchTotal,
-    errorMessage: ''
+    errorMessage: '',
+    retryPayload
   };
 }
 
@@ -109,4 +134,15 @@ export function isFinishedStatus(status: OperationStatus): boolean {
   return status === OperationStatus.SUCCESS
     || status === OperationStatus.FAILED
     || status === OperationStatus.CANCELLED;
+}
+
+/**
+ * Return true if the operation carries enough information to be retried.
+ */
+export function canRetry(op: Operation): boolean {
+  if (op.status !== OperationStatus.FAILED
+    && op.status !== OperationStatus.CANCELLED) {
+    return false;
+  }
+  return op.retryPayload !== undefined;
 }

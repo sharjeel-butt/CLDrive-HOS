@@ -1,15 +1,20 @@
 import { ICloudProvider } from '../../interfaces/ICloudProvider';
-import { CloudItem, createFolderItem } from '../../models/CloudItem';
+import { CloudItem } from '../../models/CloudItem';
 import { UserProfile } from '../../models/UserProfile';
 import { CloudProviderType } from '../../models/CloudProviderType';
-import { OneDriveApiClient } from './OneDriveApiClient';
+import { DownloadInfo } from '../../models/DownloadInfo';
+import {
+  OneDriveApiClient,
+  UploadSessionResponse
+} from './OneDriveApiClient';
 import { OneDriveAuthProvider } from './OneDriveAuthProvider';
 import { OneDriveMapper, GraphUser } from './OneDriveMapper';
 import { TokenRefresher } from '../../auth/TokenRefresher';
 import { LocalFileService } from '../../../utils/FileUtil';
 import { OneDriveConfig } from '../../../config/OneDriveConfig';
 import { Logger } from '../../../utils/Logger';
-import { DownloadInfo } from '../../models/DownloadInfo';
+
+const TAG: string = 'OneDriveProvider';
 
 export class OneDriveProvider implements ICloudProvider {
   readonly providerType: string = CloudProviderType.ONEDRIVE;
@@ -32,7 +37,9 @@ export class OneDriveProvider implements ICloudProvider {
     return TokenRefresher.withAutoRefresh(this.accountId, this.auth, op);
   }
 
-  // ---- Identity ----
+  // ===========================================================================
+  // Identity
+  // ===========================================================================
 
   async getCurrentUser(): Promise<UserProfile> {
     const me: GraphUser = await this.run(t => this.api.getMe(t));
@@ -49,16 +56,19 @@ export class OneDriveProvider implements ICloudProvider {
       email = me.userPrincipalName;
     }
 
-    return {
+    const profile: UserProfile = {
       id: me.id,
       displayName: displayName,
       email: email,
       avatarUrl: undefined,
       provider: this.providerType
     };
+    return profile;
   }
 
-  // ---- Listing ----
+  // ===========================================================================
+  // Listing
+  // ===========================================================================
 
   async listChildren(parentId: string): Promise<CloudItem[]> {
     if (!parentId || parentId === 'root') {
@@ -79,7 +89,9 @@ export class OneDriveProvider implements ICloudProvider {
     return OneDriveMapper.toCloudItems(items);
   }
 
-  // ---- Mutations ----
+  // ===========================================================================
+  // Mutations
+  // ===========================================================================
 
   async createFolder(parentId: string, name: string): Promise<CloudItem> {
     const item = await this.run(t => this.api.createFolder(t, parentId, name));
@@ -102,11 +114,6 @@ export class OneDriveProvider implements ICloudProvider {
     return OneDriveMapper.toCloudItem(item);
   }
 
-  /**
-   * Copy an item. Returns a Graph monitor URL when the operation is async
-   * (always for folders, occasionally for very large files), or null when
-   * the copy completes inline.
-   */
   async copyItem(
     itemId: string,
     newParentId: string,
@@ -119,25 +126,105 @@ export class OneDriveProvider implements ICloudProvider {
     await this.run(t => this.api.deleteItem(t, itemId));
   }
 
-  // ---- Transfers ----
+  // ===========================================================================
+  // Upload
+  // ===========================================================================
 
   async uploadFile(
     parentId: string,
     fileName: string,
     localPath: string
   ): Promise<CloudItem> {
-    const size = await LocalFileService.getSize(localPath);
+    // ---- Defensive guards ----
+    if (fileName === undefined || fileName === null || fileName.length === 0) {
+      throw new Error('uploadFile: fileName is required');
+    }
+    if (localPath === undefined || localPath === null || localPath.length === 0) {
+      throw new Error('uploadFile: localPath is required');
+    }
+    const safeParentId: string =
+      (parentId !== undefined && parentId !== null && parentId.length > 0)
+        ? parentId
+        : 'root';
 
+    Logger.info(
+      TAG,
+      `uploadFile: parentId=${safeParentId} fileName="${fileName}" ` +
+        `localPath=${localPath}`
+    );
+
+    // ---- Determine size ----
+    let size: number = 0;
+    try {
+      size = await LocalFileService.getSize(localPath);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(
+        TAG,
+        `Failed to get size for "${fileName}": ${err.message}`
+      );
+      throw new Error(
+        `Cannot read local file "${fileName}": ${err.message}`
+      );
+    }
+
+    Logger.info(TAG, `uploadFile: "${fileName}" size=${size} bytes`);
+
+    // ---- Route to the appropriate upload path ----
     if (size <= OneDriveConfig.SIMPLE_UPLOAD_MAX_BYTES) {
-      const content = await LocalFileService.readAll(localPath);
+      return await this.uploadSmall(safeParentId, fileName, localPath);
+    }
+    return await this.uploadLarge(safeParentId, fileName, localPath, size);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Simple upload (single PUT, files ≤ 4 MB)
+  // ---------------------------------------------------------------------------
+
+  private async uploadSmall(
+    parentId: string,
+    fileName: string,
+    localPath: string
+  ): Promise<CloudItem> {
+    let content: ArrayBuffer;
+    try {
+      content = await LocalFileService.readAll(localPath);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(
+        TAG,
+        `readAll failed for "${fileName}": ${err.message}`
+      );
+      throw new Error(`Cannot read "${fileName}": ${err.message}`);
+    }
+
+    Logger.info(
+      TAG,
+      `uploadSmall: "${fileName}" read ${content.byteLength} bytes from disk`
+    );
+
+    try {
       const item = await this.run(t =>
       this.api.uploadSmall(t, parentId, fileName, content)
       );
+      Logger.info(
+        TAG,
+        `uploadSmall: "${fileName}" uploaded successfully`
+      );
       return OneDriveMapper.toCloudItem(item);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(
+        TAG,
+        `uploadSmall API call failed for "${fileName}": ${err.message}`
+      );
+      throw err;
     }
-
-    return this.uploadLarge(parentId, fileName, localPath, size);
   }
+
+  // ---------------------------------------------------------------------------
+  // Resumable upload (chunked PUTs, files > 4 MB)
+  // ---------------------------------------------------------------------------
 
   private async uploadLarge(
     parentId: string,
@@ -145,29 +232,117 @@ export class OneDriveProvider implements ICloudProvider {
     localPath: string,
     totalSize: number
   ): Promise<CloudItem> {
-    const session = await this.run(t =>
-    this.api.createUploadSession(t, parentId, fileName)
+    // ---- 1. Create the upload session ----
+    let session: UploadSessionResponse;
+    try {
+      session = await this.run(t =>
+      this.api.createUploadSession(t, parentId, fileName)
+      );
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(
+        TAG,
+        `createUploadSession failed for "${fileName}": ${err.message}`
+      );
+      throw err;
+    }
+
+    Logger.info(
+      TAG,
+      `uploadLarge: session created for "${fileName}", ` +
+        `uploadUrl=${session.uploadUrl}`
     );
+
     const chunkSize: number = OneDriveConfig.UPLOAD_CHUNK_BYTES;
     let offset: number = 0;
     let lastItem: CloudItem | null = null;
+    let chunkIndex: number = 0;
 
+    // ---- 2. Upload chunks ----
     while (offset < totalSize) {
-      const end = Math.min(offset + chunkSize, totalSize);
-      const chunk = await LocalFileService.readRange(localPath, offset, end - offset);
-      const result = await this.api.uploadChunk(
-        session.uploadUrl, chunk, offset, end - 1, totalSize
+      const end: number = Math.min(offset + chunkSize, totalSize);
+      const chunkLength: number = end - offset;
+
+      let chunk: ArrayBuffer;
+      try {
+        chunk = await LocalFileService.readRange(
+          localPath, offset, chunkLength
+        );
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.error(
+          TAG,
+          `readRange failed at offset=${offset} for "${fileName}": ` +
+            `${err.message}`
+        );
+        throw new Error(
+          `Cannot read chunk at offset ${offset} from "${fileName}": ` +
+            `${err.message}`
+        );
+      }
+
+      Logger.info(
+        TAG,
+        `uploadLarge: chunk ${chunkIndex} ` +
+          `range ${offset}-${end - 1}/${totalSize} (${chunkLength} bytes)`
       );
-      if (result !== null) lastItem = OneDriveMapper.toCloudItem(result);
+
+      try {
+        const result = await this.api.uploadChunk(
+          session.uploadUrl,
+          chunk,
+          offset,
+          end - 1,
+          totalSize
+        );
+
+        if (result !== null) {
+          lastItem = OneDriveMapper.toCloudItem(result);
+          Logger.info(
+            TAG,
+            `uploadLarge: "${fileName}" chunk ${chunkIndex} returned DriveItem`
+          );
+        } else {
+          Logger.info(
+            TAG,
+            `uploadLarge: "${fileName}" chunk ${chunkIndex} accepted (more to go)`
+          );
+        }
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.error(
+          TAG,
+          `uploadChunk failed at offset=${offset} for "${fileName}": ` +
+            `${err.message}`
+        );
+        throw new Error(
+          `Chunk upload failed at offset ${offset}: ${err.message}`
+        );
+      }
+
       offset = end;
-      Logger.info('OneDriveProvider', `Uploaded ${offset}/${totalSize} bytes`);
+      chunkIndex++;
     }
 
+    // ---- 3. Validate we received the final DriveItem ----
     if (lastItem === null) {
-      throw new Error('Upload session completed without a DriveItem response.');
+      throw new Error(
+        `Upload session for "${fileName}" completed without a DriveItem ` +
+          `response. This usually means the final chunk did not include ` +
+          `the closing byte range.`
+      );
     }
+
+    Logger.info(
+      TAG,
+      `uploadLarge: "${fileName}" uploaded successfully`
+    );
     return lastItem;
   }
+
+  // ===========================================================================
+  // Download
+  // ===========================================================================
 
   async downloadFile(itemId: string, localPath: string): Promise<void> {
     const buffer = await this.run(t => this.api.downloadContent(t, itemId));
@@ -176,7 +351,10 @@ export class OneDriveProvider implements ICloudProvider {
 
   async getDownloadInfo(itemId: string): Promise<DownloadInfo> {
     const url: string = await this.run(t => this.api.getDownloadUrl(t, itemId));
-    // OneDrive returns a pre-authenticated URL — no headers needed.
-    return { url: url, headers: new Map<string, string>() };
+    const result: DownloadInfo = {
+      url: url,
+      headers: new Map<string, string>()
+    };
+    return result;
   }
 }

@@ -90,18 +90,25 @@ export class OneDriveMapper {
   static toCloudItem(item: GraphDriveItem): CloudItem {
     const isFolder: boolean = item.folder !== undefined;
 
+    // Guard: Graph should always return a name, but if it doesn't we
+    // fall back to the item ID so the mapper never crashes downstream.
+    const rawName: string =
+      item.name !== undefined && item.name !== null && item.name.length > 0
+        ? item.name
+        : item.id;
+
     const mimeType: string = item.file?.mimeType !== undefined
       ? item.file.mimeType
       : '';
 
     const displayName: string = isFolder
-      ? item.name
-      : ensureFileExtension(item.name, mimeType, '');
+      ? rawName
+      : ensureFileExtension(rawName, mimeType, '');
 
     return {
       id: item.id,
       provider: CloudProviderType.ONEDRIVE,
-      name: displayName,
+      name: displayName.length > 0 ? displayName : item.id,
       type: isFolder ? CloudItemType.FOLDER : CloudItemType.FILE,
       size: item.size,
       childCount: item.folder !== undefined ? item.folder.childCount : undefined,

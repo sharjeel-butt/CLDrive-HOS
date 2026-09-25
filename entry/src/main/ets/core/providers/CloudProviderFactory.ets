@@ -14,10 +14,10 @@ export class CloudProviderFactory {
     accountId: string,
     type: CloudProviderType
   ): ICloudProvider {
-    const key = `${accountId}::${type}`;
-    if (CloudProviderFactory.providerCache.has(key)) {
-      return CloudProviderFactory.providerCache.get(key)!;
-    }
+    const key: string = `${accountId}::${type}`;
+    const cached: ICloudProvider | undefined =
+      CloudProviderFactory.providerCache.get(key);
+    if (cached !== undefined) return cached;
 
     let provider: ICloudProvider;
     switch (type) {
@@ -36,9 +36,9 @@ export class CloudProviderFactory {
   }
 
   static getAuthProvider(type: CloudProviderType): IAuthProvider {
-    if (CloudProviderFactory.authCache.has(type)) {
-      return CloudProviderFactory.authCache.get(type)!;
-    }
+    const cached: IAuthProvider | undefined =
+      CloudProviderFactory.authCache.get(type);
+    if (cached !== undefined) return cached;
 
     let auth: IAuthProvider;
     switch (type) {

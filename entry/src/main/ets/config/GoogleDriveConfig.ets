@@ -6,7 +6,7 @@ export class GoogleDriveConfig {
   // Credentials — replace with your Google Cloud values
   // ---------------------------------------------------------------------------
   static readonly CLIENT_ID: string = '665769066960-eevl8ibun6kc8l7j1nlmnn41p6v8n9ls.apps.googleusercontent.com';
-  static readonly CLIENT_SECRET: string = '';
+  static readonly CLIENT_SECRET: string = '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';
   static readonly REDIRECT_URI: string = Endpoints.GOOGLE_REDIRECT_URI;
 
   // ---------------------------------------------------------------------------

@@ -2,6 +2,12 @@ import { promptAction, router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { request } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { fileUri } from '@kit.CoreFileKit';
+import { zlib } from '@kit.BasicServicesKit';
+import { util } from '@kit.ArkTS';
+import { http } from '@kit.NetworkKit';
+import { Want, wantConstant } from '@kit.AbilityKit';
 import { CloudProviderFactory } from '../core/providers/CloudProviderFactory';
 import { CloudProviderType } from '../core/models/CloudProviderType';
 import { ICloudProvider } from '../core/interfaces/ICloudProvider';
@@ -9,20 +15,29 @@ import { CloudItem } from '../core/models/CloudItem';
 import { CloudItemType } from '../core/models/CloudItemType';
 import { AccountInfo, providerFromAccountId } from '../core/models/AccountInfo';
 import { AuthManager } from '../core/auth/AuthManager';
-import { Operation, OperationType, OperationItemKind } from '../core/models/Operation';
+import { DownloadInfo } from '../core/models/DownloadInfo';
+import {
+  Operation, OperationType, OperationStatus, OperationItemKind,
+  RetryPayload, canRetry
+} from '../core/models/Operation';
 import { OperationTracker } from '../core/services/OperationTracker';
+import { OfflineStore, OfflineFileRecord } from '../core/services/OfflineStore';
 import { HttpClient, HttpRequestOptions } from '../core/network/HttpClient';
 import { Logger } from '../utils/Logger';
 import { Routes } from '../utils/RouteConstants';
-import { DownloadInfo } from '../core/models/DownloadInfo';
-import { fileIo as fs } from '@kit.CoreFileKit';
-import { http } from '@kit.NetworkKit';
-import { util } from '@kit.ArkTS';
 
 const TAG: string = 'FileBrowserViewModel';
 
 const HIDDEN_PICKER_FOLDER_NAMES: string[] = ['Getting Started'];
 const SEARCH_DEBOUNCE_MS: number = 400;
+
+const FOLDER_DOWNLOAD_ENABLED: boolean = false;
+const UPLOAD_FOLDER_ENABLED: boolean = false;
+
+
+// =============================================================================
+// Exported types
+// =============================================================================
 
 export interface ProviderGroup {
   type: CloudProviderType;
@@ -37,6 +52,20 @@ export interface Crumb {
   name: string;
 }
 
+export interface ActivityGroup {
+  dateLabel: string;
+  operations: Operation[];
+}
+
+export const ACTIVITY_TAB_ALL: string = 'all';
+export const ACTIVITY_TAB_PENDING: string = 'pending';
+export const ACTIVITY_TAB_SUCCESS: string = 'success';
+export const ACTIVITY_TAB_FAILED: string = 'failed';
+
+// =============================================================================
+// Internal types
+// =============================================================================
+
 interface NameParts {
   base: string;
   ext: string;
@@ -46,6 +75,20 @@ interface WalkedFile {
   path: string;
   relative: string;
 }
+
+interface DownloadTask {
+  cloudId: string;
+  relativePath: string;
+  kind: OperationItemKind;
+}
+
+interface TaskCounter {
+  total: number;
+}
+
+// =============================================================================
+// ViewModel
+// =============================================================================
 
 export class FileBrowserViewModel {
   // ---- File browser ----
@@ -94,9 +137,12 @@ export class FileBrowserViewModel {
   showCreateFolderDialog: boolean = false;
   newFolderName: string = '';
   isCreatingFolder: boolean = false;
+  createFolderTargetId: string = 'root';
 
-  // ---- Activity panel ----
+  // ---- Tasks panel ----
   isActivityPanelOpen: boolean = false;
+  activityTab: string = ACTIVITY_TAB_ALL;
+  operations: Operation[] = [];
 
   // ---- Search ----
   isSearchActive: boolean = false;
@@ -122,6 +168,8 @@ export class FileBrowserViewModel {
   // ===========================================================================
 
   async init(): Promise<void> {
+    await this.loadOfflineIds();
+
     const activeId: string = await AuthManager.getActiveAccountId();
     if (activeId.length === 0) {
       router.replaceUrl({ url: Routes.ONBOARDING });
@@ -132,22 +180,19 @@ export class FileBrowserViewModel {
   }
 
   async onPageShow(): Promise<void> {
-    // Detect whether the active account changed while we were away.
-    // Adding a new account from onboarding sets a new active account ID,
-    // so we must swap the cloud provider accordingly.
     const newActiveId: string = await AuthManager.getActiveAccountId();
     const accountChanged: boolean = newActiveId !== this.activeAccountId;
 
     await this.refreshAccounts();
 
     if (accountChanged || this.cloudProvider === null) {
-      // Fresh account — reset the trail and reload from root.
       await this.activateAccount(newActiveId);
+      await this.loadOfflineIds();
       return;
     }
 
-    // Same account — just refresh the current folder.
     await this.loadFolder(this.currentFolderId);
+    await this.loadOfflineIds();
   }
 
   // ===========================================================================
@@ -155,7 +200,7 @@ export class FileBrowserViewModel {
   // ===========================================================================
 
   private async refreshAccounts(): Promise<void> {
-    const list = await AuthManager.getAccounts();
+    const list: AccountInfo[] = await AuthManager.getAccounts();
     this.accounts = list;
     this.groups = this.buildGroups(list);
     this.activeAccountId = await AuthManager.getActiveAccountId();
@@ -168,7 +213,7 @@ export class FileBrowserViewModel {
     const onedrive: AccountInfo[] = [];
     const google: AccountInfo[] = [];
     for (let i = 0; i < accounts.length; i++) {
-      const a = accounts[i];
+      const a: AccountInfo = accounts[i];
       if (a.provider === CloudProviderType.ONEDRIVE) onedrive.push(a);
       else if (a.provider === CloudProviderType.GOOGLE_DRIVE) google.push(a);
     }
@@ -278,9 +323,7 @@ export class FileBrowserViewModel {
     setTimeout(() => {
       try {
         this.crumbScroller!.scrollEdge(Edge.End);
-      } catch (_) {
-        // Scroller not attached — safe to ignore.
-      }
+      } catch (_) { /* not attached */ }
     }, 80);
   }
 
@@ -315,7 +358,7 @@ export class FileBrowserViewModel {
       this.searchTimerId = -1;
     }
 
-    const trimmed = q.trim();
+    const trimmed: string = q.trim();
     if (trimmed.length === 0) {
       this.searchResults = [];
       this.searchError = '';
@@ -331,14 +374,14 @@ export class FileBrowserViewModel {
 
   private async performSearch(): Promise<void> {
     if (this.cloudProvider === null) return;
-    const query = this.searchQuery.trim();
+    const query: string = this.searchQuery.trim();
     if (query.length === 0) {
       this.isSearching = false;
       return;
     }
 
     try {
-      const results = await this.cloudProvider.search(query);
+      const results: CloudItem[] = await this.cloudProvider.search(query);
       this.searchResults = results;
       this.searchError = '';
     } catch (e) {
@@ -365,65 +408,177 @@ export class FileBrowserViewModel {
   // Upload menu
   // ===========================================================================
 
-  openUploadMenu(): void {
-    this.showUploadMenu = true;
-  }
+  openUploadMenu(): void { this.showUploadMenu = true; }
+  closeUploadMenu(): void { this.showUploadMenu = false; }
 
-  closeUploadMenu(): void {
-    this.showUploadMenu = false;
+  isUploadFolderEnabled(): boolean {
+    return UPLOAD_FOLDER_ENABLED;
   }
 
   async onUploadFile(): Promise<void> {
-    if (this.cloudProvider === null) return;
+    if (this.cloudProvider === null || this.context === null) return;
+
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+
     this.closeUploadMenu();
 
     try {
-      const p = new picker.DocumentViewPicker();
+      const p = new picker.DocumentViewPicker(ctx);
       const options = new picker.DocumentSelectOptions();
-      options.maxSelectNumber = 20;
+      options.maxSelectNumber = 100;
 
       const uris: string[] = await p.select(options);
       if (uris === null || uris === undefined || uris.length === 0) return;
 
-      const tracker = OperationTracker.get();
+      Logger.info(TAG, `Upload: ${uris.length} file(s) selected`);
+
+      let existing: CloudItem[] = [];
+      try {
+        existing = await provider.listChildren(this.currentFolderId);
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.error(TAG, `listChildren failed before upload: ${err.message}`);
+      }
+
+      const takenNames: string[] = [];
+      for (let i = 0; i < existing.length; i++) {
+        const n: string | undefined = existing[i].name;
+        if (n !== undefined && n !== null && n.length > 0) {
+          takenNames.push(n.toLowerCase());
+        }
+      }
+
+      const tracker: OperationTracker = OperationTracker.get();
+
+      // ===================================================================
+      // PHASE 0 — Copy every picked file to the sandbox.
+      //
+      // Picker URIs are session-scoped. Copying now (while the grant is
+      // still valid) produces a sandbox path that survives app restarts,
+      // so retries never hit "Operation not permitted".
+      // ===================================================================
+      const sandboxPaths: string[] = [];
+      const uploadNames: string[] = [];
+      const opIds: string[] = [];
 
       for (let i = 0; i < uris.length; i++) {
-        const uri = uris[i];
-        const fileName = FileBrowserViewModel.fileNameFromUri(uri);
+        const uri: string = uris[i];
 
-        const opId = tracker.register(
+        if (uri === undefined || uri === null || uri.length === 0) {
+          Logger.warn(TAG, `Skipping empty URI at index ${i}`);
+          continue;
+        }
+
+        const originalName: string =
+          FileBrowserViewModel.fileNameFromUri(uri);
+        const safeName: string = originalName.length > 0
+          ? originalName
+          : `file_${i + 1}`;
+
+        const finalName: string =
+          FileBrowserViewModel.findAvailableName(safeName, takenNames);
+        takenNames.push(finalName.toLowerCase());
+
+        let sandboxPath: string = '';
+        try {
+          sandboxPath = await this.copyPickerUriToSandbox(uri, finalName);
+        } catch (e) {
+          const err: Error = e as Error;
+          Logger.error(
+            TAG,
+            `Failed to copy "${finalName}" to sandbox: ${err.message}`
+          );
+          const failedPayload: RetryPayload = {
+            parentId: this.currentFolderId,
+            localUri: uri
+          };
+          const failedId: string = tracker.register(
+            OperationType.UPLOAD, finalName, '', OperationItemKind.FILE,
+            i + 1, uris.length, failedPayload
+          );
+          tracker.markFailed(failedId, `Could not prepare file: ${err.message}`);
+          continue;
+        }
+
+        const uploadPayload: RetryPayload = {
+          parentId: this.currentFolderId,
+          localUri: sandboxPath
+        };
+        const opId: string = tracker.register(
           OperationType.UPLOAD,
-          fileName,
+          finalName,
           '',
           OperationItemKind.FILE,
           i + 1,
-          uris.length
+          uris.length,
+          uploadPayload
         );
-        tracker.markRunning(opId);
+
+        sandboxPaths.push(sandboxPath);
+        uploadNames.push(finalName);
+        opIds.push(opId);
+      }
+
+      // ===================================================================
+      // PHASE 2 — Execute the batch sequentially.
+      // ===================================================================
+      let success: number = 0;
+      let failed: number = 0;
+
+      for (let i = 0; i < opIds.length; i++) {
+        tracker.markRunning(opIds[i]);
 
         try {
-          await this.cloudProvider.uploadFile(this.currentFolderId, fileName, uri);
-          tracker.markSuccess(opId);
+          await provider.uploadFile(
+            this.currentFolderId, uploadNames[i], sandboxPaths[i]
+          );
+          tracker.markSuccess(opIds[i]);
+          success++;
+
+          try {
+            fs.unlinkSync(sandboxPaths[i]);
+          } catch (_) { /* already gone */ }
         } catch (e) {
           const err: Error = e as Error;
-          Logger.error(TAG, `upload ${fileName} failed: ${err.message}`);
-          tracker.markFailed(opId, err.message);
+          Logger.error(
+            TAG,
+            `upload "${uploadNames[i]}" failed: ${err.message}`
+          );
+          tracker.markFailed(opIds[i], err.message);
+          failed++;
         }
       }
 
       await this.loadFolder(this.currentFolderId);
+
+      if (failed === 0) {
+        promptAction.showToast({
+          message: success === 1
+            ? `Uploaded 1 file`
+            : `Uploaded ${success} files`
+        });
+      } else {
+        promptAction.showToast({
+          message: `Uploaded ${success}, failed ${failed}`
+        });
+      }
     } catch (e) {
       const err: Error = e as Error;
-      Logger.warn(TAG, `upload file picker cancelled or failed: ${err.message}`);
+      Logger.warn(TAG, `upload cancelled or failed: ${err.message}`);
     }
   }
 
   async onUploadFolder(): Promise<void> {
-    if (this.cloudProvider === null) return;
+    if (this.cloudProvider === null || this.context === null) return;
+
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+
     this.closeUploadMenu();
 
     try {
-      const p = new picker.DocumentViewPicker();
+      const p = new picker.DocumentViewPicker(ctx);
       const options = new picker.DocumentSelectOptions();
       options.maxSelectNumber = 1;
       options.selectMode = picker.DocumentSelectMode.FOLDER;
@@ -431,9 +586,9 @@ export class FileBrowserViewModel {
       const uris: string[] = await p.select(options);
       if (uris === null || uris === undefined || uris.length === 0) return;
 
-      const rootUri = uris[0];
-      const rootName = FileBrowserViewModel.fileNameFromUri(rootUri);
-      const rootPath = FileBrowserViewModel.uriToPath(rootUri);
+      const rootUri: string = uris[0];
+      const rootName: string = FileBrowserViewModel.fileNameFromUri(rootUri);
+      const rootPath: string = FileBrowserViewModel.uriToPath(rootUri);
 
       const files: WalkedFile[] = FileBrowserViewModel.walkDirectory(rootPath);
 
@@ -442,17 +597,17 @@ export class FileBrowserViewModel {
         return;
       }
 
-      const tracker = OperationTracker.get();
+      const tracker: OperationTracker = OperationTracker.get();
 
-      // Create the top-level destination folder in the cloud (or reuse).
-      let rootFolderId = '';
+      let rootFolderId: string = '';
       try {
-        const created = await this.cloudProvider.createFolder(
+        const created: CloudItem = await provider.createFolder(
           this.currentFolderId, rootName
         );
         rootFolderId = created.id;
       } catch (e) {
-        const siblings = await this.cloudProvider.listChildren(this.currentFolderId);
+        const siblings: CloudItem[] =
+          await provider.listChildren(this.currentFolderId);
         for (let i = 0; i < siblings.length; i++) {
           if (siblings[i].name === rootName
             && siblings[i].type === CloudItemType.FOLDER) {
@@ -470,12 +625,12 @@ export class FileBrowserViewModel {
       folderCache.set('', rootFolderId);
 
       for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const parts = f.relative.split('/');
-        const name = parts[parts.length - 1];
-        const dirRel = parts.slice(0, -1).join('/');
+        const f: WalkedFile = files[i];
+        const parts: string[] = f.relative.split('/');
+        const name: string = parts[parts.length - 1];
+        const dirRel: string = parts.slice(0, -1).join('/');
 
-        const opId = tracker.register(
+        const opId: string = tracker.register(
           OperationType.UPLOAD,
           f.relative,
           '',
@@ -486,8 +641,11 @@ export class FileBrowserViewModel {
         tracker.markRunning(opId);
 
         try {
-          const parentId = await this.ensureFolderPath(dirRel, folderCache, rootFolderId);
-          await this.cloudProvider.uploadFile(parentId, name, `file://${f.path}`);
+          const parentId: string =
+            await this.ensureFolderPath(
+              dirRel, folderCache, rootFolderId, provider
+            );
+          await provider.uploadFile(parentId, name, `file://${f.path}`);
           tracker.markSuccess(opId);
         } catch (e) {
           const err: Error = e as Error;
@@ -507,34 +665,35 @@ export class FileBrowserViewModel {
   private async ensureFolderPath(
     relative: string,
     cache: Map<string, string>,
-    rootFolderId: string
+    rootFolderId: string,
+    provider: ICloudProvider
   ): Promise<string> {
     if (relative.length === 0) return rootFolderId;
 
-    const cached = cache.get(relative);
+    const cached: string | undefined = cache.get(relative);
     if (cached !== undefined) return cached;
 
-    const parts = relative.split('/');
-    let currentId = rootFolderId;
-    let currentRel = '';
+    const parts: string[] = relative.split('/');
+    let currentId: string = rootFolderId;
+    let currentRel: string = '';
 
     for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
+      const part: string = parts[i];
       currentRel = currentRel.length > 0 ? `${currentRel}/${part}` : part;
 
-      const existing = cache.get(currentRel);
+      const existing: string | undefined = cache.get(currentRel);
       if (existing !== undefined) {
         currentId = existing;
         continue;
       }
 
       try {
-        const created = await this.cloudProvider!.createFolder(currentId, part);
+        const created: CloudItem = await provider.createFolder(currentId, part);
         currentId = created.id;
         cache.set(currentRel, currentId);
       } catch (e) {
-        const siblings = await this.cloudProvider!.listChildren(currentId);
-        let foundId = '';
+        const siblings: CloudItem[] = await provider.listChildren(currentId);
+        let foundId: string = '';
         for (let j = 0; j < siblings.length; j++) {
           if (siblings[j].name === part
             && siblings[j].type === CloudItemType.FOLDER) {
@@ -562,13 +721,8 @@ export class FileBrowserViewModel {
     return this.selectedIds.indexOf(itemId) >= 0;
   }
 
-  selectedCount(): number {
-    return this.selectedIds.length;
-  }
-
-  hasSelection(): boolean {
-    return this.selectedIds.length > 0;
-  }
+  selectedCount(): number { return this.selectedIds.length; }
+  hasSelection(): boolean { return this.selectedIds.length > 0; }
 
   enterSelectionMode(itemId: string): void {
     if (this.isSelectionMode) return;
@@ -582,9 +736,9 @@ export class FileBrowserViewModel {
   }
 
   toggleSelection(itemId: string): void {
-    const idx = this.selectedIds.indexOf(itemId);
+    const idx: number = this.selectedIds.indexOf(itemId);
     if (idx >= 0) {
-      const next = this.selectedIds.slice();
+      const next: string[] = this.selectedIds.slice();
       next.splice(idx, 1);
       this.selectedIds = next;
       if (this.selectedIds.length === 0) {
@@ -618,8 +772,16 @@ export class FileBrowserViewModel {
   getSelectedItems(): CloudItem[] {
     const out: CloudItem[] = [];
     for (let i = 0; i < this.items.length; i++) {
-      const it = this.items[i];
+      const it: CloudItem = this.items[i];
       if (this.selectedIds.indexOf(it.id) >= 0) out.push(it);
+    }
+    return out;
+  }
+
+  private getSelectedFolders(selected: CloudItem[]): CloudItem[] {
+    const out: CloudItem[] = [];
+    for (let i = 0; i < selected.length; i++) {
+      if (selected[i].type === CloudItemType.FOLDER) out.push(selected[i]);
     }
     return out;
   }
@@ -644,14 +806,12 @@ export class FileBrowserViewModel {
   onAddAccount(): void {
     this.isSidebarOpen = false;
     router.pushUrl({ url: Routes.ONBOARDING, params: { mode: 'add' } })
-      .catch((e: Error) => {
-        Logger.error(TAG, `pushUrl failed: ${e.message}`);
-      });
+      .catch((e: Error) => { Logger.error(TAG, `pushUrl failed: ${e.message}`); });
   }
 
   onSignOut(): void {
     if (this.activeAccount === null) return;
-    const label = this.activeAccount.displayName;
+    const label: string = this.activeAccount.displayName;
     this.isSidebarOpen = false;
     promptAction.showDialog({
       title: 'Sign out',
@@ -664,18 +824,16 @@ export class FileBrowserViewModel {
       .then((result: promptAction.ShowDialogSuccessResponse) => {
         if (result.index === 1) this.performSignOut();
       })
-      .catch((e: Error) => {
-        Logger.error(TAG, `showDialog failed: ${e.message}`);
-      });
+      .catch((e: Error) => { Logger.error(TAG, `showDialog failed: ${e.message}`); });
   }
 
   private async performSignOut(): Promise<void> {
-    const id = this.activeAccountId;
+    const id: string = this.activeAccountId;
     if (id.length === 0) return;
     try {
       await AuthManager.signOut(id);
       CloudProviderFactory.evict(id);
-      const remaining = await AuthManager.getAccounts();
+      const remaining: AccountInfo[] = await AuthManager.getAccounts();
       this.accounts = remaining;
       this.groups = this.buildGroups(remaining);
       if (remaining.length === 0) {
@@ -703,24 +861,25 @@ export class FileBrowserViewModel {
       .then((result: promptAction.ShowDialogSuccessResponse) => {
         if (result.index === 1) this.performExit();
       })
-      .catch((e: Error) => {
-        Logger.error(TAG, `showDialog failed: ${e.message}`);
-      });
+      .catch((e: Error) => { Logger.error(TAG, `showDialog failed: ${e.message}`); });
   }
 
   private performExit(): void {
     if (this.context === null) return;
-    this.context.terminateSelf().catch((e: Error) => {
+    const ctx: common.UIAbilityContext = this.context;
+    ctx.terminateSelf().catch((e: Error) => {
       Logger.error(TAG, `terminateSelf failed: ${e.message}`);
     });
   }
 
   // ===========================================================================
-  // Activity panel
+  // Tasks panel
   // ===========================================================================
 
   openActivityPanel(): void { this.isActivityPanelOpen = true; }
   closeActivityPanel(): void { this.isActivityPanelOpen = false; }
+
+  setActivityTab(tab: string): void { this.activityTab = tab; }
 
   clearCompletedOperations(): void {
     OperationTracker.get().clearCompleted();
@@ -733,7 +892,7 @@ export class FileBrowserViewModel {
   forceClearAllOperations(): void {
     promptAction.showDialog({
       title: 'Force clear all?',
-      message: 'This removes every entry from the activity list, including ones still running. Background work will continue but you will no longer see its status. Continue?',
+      message: 'This removes every entry from the task list, including ones still running. Background work will continue but you will no longer see its status. Continue?',
       buttons: [
         { text: 'Cancel', color: '#666666' },
         { text: 'Force clear', color: '#D32F2F' }
@@ -742,12 +901,353 @@ export class FileBrowserViewModel {
       .then((r: promptAction.ShowDialogSuccessResponse) => {
         if (r.index === 1) {
           OperationTracker.get().forceClearAll();
-          promptAction.showToast({ message: 'Activity list cleared' });
+          promptAction.showToast({ message: 'Task list cleared' });
         }
       })
-      .catch(() => {
-        // User dismissed.
+      .catch(() => { /* dismissed */ });
+  }
+
+  static operationMatchesTab(op: Operation, tab: string): boolean {
+    if (tab === ACTIVITY_TAB_ALL) return true;
+    if (tab === ACTIVITY_TAB_PENDING) {
+      return op.status === OperationStatus.QUEUED
+        || op.status === OperationStatus.RUNNING;
+    }
+    if (tab === ACTIVITY_TAB_SUCCESS) {
+      return op.status === OperationStatus.SUCCESS;
+    }
+    return op.status === OperationStatus.FAILED
+      || op.status === OperationStatus.CANCELLED;
+  }
+
+  static dateLabel(ms: number): string {
+    const now = new Date();
+    const todayStart: number = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate()
+    ).getTime();
+    const yesterdayStart: number = todayStart - 24 * 60 * 60 * 1000;
+
+    if (ms >= todayStart) return 'Today';
+    if (ms >= yesterdayStart) return 'Yesterday';
+
+    const d = new Date(ms);
+    const months: string[] = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  }
+
+  // ===========================================================================
+  // Retry
+  // ===========================================================================
+
+  async retrySingleOperation(opId: string): Promise<void> {
+    const tracker: OperationTracker = OperationTracker.get();
+    const op: Operation | null = tracker.getById(opId);
+    if (op === null) return;
+
+    if (!canRetry(op)) {
+      promptAction.showToast({ message: 'This task cannot be retried' });
+      return;
+    }
+
+    // Legacy upload tasks (registered before sandbox-copy was added)
+    // still carry a picker URI. Re-pick the file instead.
+    if (op.type === OperationType.UPLOAD) {
+      const localUri: string =
+        op.retryPayload !== undefined
+          && op.retryPayload.localUri !== undefined
+          ? op.retryPayload.localUri
+          : '';
+      if (!this.isSandboxPath(localUri)) {
+        await this.reselectAndRetryUpload(op);
+        return;
+      }
+    }
+
+    tracker.markRunning(opId);
+    await this.executeOperationPayload(opId, op);
+  }
+
+  async retryAllFailed(): Promise<void> {
+    const tracker: OperationTracker = OperationTracker.get();
+    const all: Operation[] = tracker.getAll();
+
+    const retryable: Operation[] = [];
+    let skipped: number = 0;
+
+    for (let i = 0; i < all.length; i++) {
+      const op: Operation = all[i];
+      if (!canRetry(op)) continue;
+
+      // Uploads whose source isn't a sandbox path are legacy entries
+      // that need re-selection. Skip them and count them separately.
+      if (op.type === OperationType.UPLOAD) {
+        const localUri: string =
+          op.retryPayload !== undefined
+            && op.retryPayload.localUri !== undefined
+            ? op.retryPayload.localUri
+            : '';
+        if (!this.isSandboxPath(localUri)) {
+          skipped++;
+          continue;
+        }
+      }
+      retryable.push(op);
+    }
+
+    if (retryable.length === 0 && skipped === 0) {
+      promptAction.showToast({ message: 'No failed tasks to retry' });
+      return;
+    }
+
+    if (retryable.length === 0 && skipped > 0) {
+      promptAction.showToast({
+        message: skipped === 1
+          ? 'Tap ↻ on the failed upload to re-select the file'
+          : 'Tap ↻ on each failed upload to re-select the files'
       });
+      return;
+    }
+
+    for (let i = 0; i < retryable.length; i++) {
+      tracker.markRunning(retryable[i].id);
+    }
+
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < retryable.length; i++) {
+      const op: Operation = retryable[i];
+      await this.executeOperationPayload(op.id, op);
+
+      const after: Operation | null = tracker.getById(op.id);
+      if (after === null) continue;
+      if (after.status === OperationStatus.SUCCESS) success++;
+      else failed++;
+    }
+
+    if (skipped > 0) {
+      promptAction.showToast({
+        message: `Retried ${success}, ${skipped} need re-selection (tap ↻)`
+      });
+    } else if (failed === 0) {
+      promptAction.showToast({
+        message: `Retried ${success} task${success === 1 ? '' : 's'}`
+      });
+    } else {
+      promptAction.showToast({
+        message: `Retried ${success}, failed ${failed}`
+      });
+    }
+  }
+
+  /**
+   * Ask the user to re-select a file for a legacy failed upload, then
+   * register and run a fresh upload task with the newly-picked file.
+   *
+   * Used when the retry's source URI lives outside the sandbox — which
+   * only happens for tasks registered before the sandbox-copy fix.
+   */
+  private async reselectAndRetryUpload(op: Operation): Promise<void> {
+    if (this.cloudProvider === null || this.context === null) return;
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+    const tracker: OperationTracker = OperationTracker.get();
+
+    // Confirm before opening a picker.
+    let confirmed: boolean = false;
+    try {
+      const result: promptAction.ShowDialogSuccessResponse =
+        await promptAction.showDialog({
+          title: 'Select the file again',
+          message: `"${op.itemName}" was picked in a previous session. ` +
+            `Please select it again to retry the upload.`,
+          buttons: [
+            { text: 'Cancel', color: '#666666' },
+            { text: 'Select file', color: '#0A5BD3' }
+          ]
+        });
+      confirmed = result.index === 1;
+    } catch (_) {
+      return;
+    }
+    if (!confirmed) return;
+
+    // Open the picker for a single file.
+    let newUri: string = '';
+    try {
+      const p = new picker.DocumentViewPicker(ctx);
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 1;
+
+      const uris: string[] = await p.select(options);
+      if (uris === null || uris === undefined || uris.length === 0) return;
+      newUri = uris[0];
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.warn(TAG, `reselect picker cancelled: ${err.message}`);
+      return;
+    }
+
+    const newName: string = FileBrowserViewModel.fileNameFromUri(newUri);
+    const finalName: string = newName.length > 0 ? newName : op.itemName;
+
+    // Copy to sandbox immediately — future retries will use this path.
+    let sandboxPath: string = '';
+    try {
+      sandboxPath = await this.copyPickerUriToSandbox(newUri, finalName);
+    } catch (e) {
+      const err: Error = e as Error;
+      promptAction.showToast({
+        message: `Could not prepare file: ${err.message}`
+      });
+      return;
+    }
+
+    // Preserve the original destination folder.
+    const parentId: string =
+      op.retryPayload !== undefined
+        && op.retryPayload.parentId !== undefined
+        ? op.retryPayload.parentId
+        : this.currentFolderId;
+
+    // Register a fresh task — the original failed row stays in history.
+    const freshPayload: RetryPayload = {
+      parentId: parentId,
+      localUri: sandboxPath
+    };
+    const freshId: string = tracker.register(
+      OperationType.UPLOAD,
+      finalName,
+      '',
+      OperationItemKind.FILE,
+      0,
+      0,
+      freshPayload
+    );
+    tracker.markRunning(freshId);
+
+    try {
+      await provider.uploadFile(parentId, finalName, sandboxPath);
+      tracker.markSuccess(freshId);
+
+      // Clean up sandbox copy on success.
+      try { fs.unlinkSync(sandboxPath); } catch (_) { /* gone */ }
+
+      await this.loadFolder(this.currentFolderId);
+      promptAction.showToast({ message: `Uploaded "${finalName}"` });
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `reselect upload failed: ${err.message}`);
+      tracker.markFailed(freshId, err.message);
+      promptAction.showToast({ message: `Upload failed: ${err.message}` });
+    }
+  }
+
+  private async executeOperationPayload(
+    opId: string,
+    op: Operation
+  ): Promise<void> {
+    if (this.cloudProvider === null) return;
+    const provider: ICloudProvider = this.cloudProvider;
+    const tracker: OperationTracker = OperationTracker.get();
+    const payload: RetryPayload | undefined = op.retryPayload;
+    if (payload === undefined) return;
+
+    try {
+      if (op.type === OperationType.DELETE) {
+        const itemId: string = payload.itemId !== undefined
+          ? payload.itemId : op.itemId;
+        await provider.deleteItem(itemId);
+        tracker.markSuccess(opId);
+        return;
+      }
+
+      if (op.type === OperationType.UPLOAD) {
+        const parentId: string = payload.parentId !== undefined
+          ? payload.parentId : this.currentFolderId;
+        const localUri: string = payload.localUri !== undefined
+          ? payload.localUri : '';
+
+        if (localUri.length === 0) {
+          throw new Error('Missing local file for retry');
+        }
+
+        // Final guard — legacy picker URIs can't be read after restart.
+        if (!this.isSandboxPath(localUri)) {
+          throw new Error(
+            'Source file from a previous session. Tap ↻ to re-select it.'
+          );
+        }
+
+        await provider.uploadFile(parentId, op.itemName, localUri);
+        tracker.markSuccess(opId);
+
+        try {
+          const path: string = FileBrowserViewModel.uriToPath(localUri);
+          fs.unlinkSync(path);
+        } catch (_) { /* already gone */ }
+        return;
+      }
+
+      if (op.type === OperationType.MOVE) {
+        const targetId: string = payload.targetFolderId !== undefined
+          ? payload.targetFolderId : '';
+        if (targetId.length === 0) {
+          throw new Error('Missing destination for retry');
+        }
+        let finalName: string | undefined = undefined;
+        const sibling: CloudItem | null =
+          await this.findSiblingByName(targetId, op.itemName);
+        if (sibling !== null) {
+          finalName = await this.findAvailableCloudName(op.itemName, targetId);
+        }
+        await provider.moveItem(op.itemId, targetId, finalName);
+        tracker.markSuccess(opId);
+        return;
+      }
+
+      if (op.type === OperationType.COPY) {
+        const targetId: string = payload.targetFolderId !== undefined
+          ? payload.targetFolderId : '';
+        if (targetId.length === 0) {
+          throw new Error('Missing destination for retry');
+        }
+        let finalName: string | undefined = undefined;
+        const sibling: CloudItem | null =
+          await this.findSiblingByName(targetId, op.itemName);
+        if (sibling !== null) {
+          finalName = await this.findAvailableCloudName(op.itemName, targetId);
+        }
+        const monitorUrl: string | null =
+          await provider.copyItem(op.itemId, targetId, finalName);
+        if (monitorUrl !== null && monitorUrl.length > 0) {
+          await this.pollCopyMonitor(monitorUrl, opId);
+        } else {
+          tracker.markSuccess(opId);
+        }
+        return;
+      }
+
+      if (op.type === OperationType.DOWNLOAD) {
+        const targetUri: string = payload.targetUri !== undefined
+          ? payload.targetUri : '';
+        if (targetUri.length === 0) {
+          throw new Error('Missing download destination for retry');
+        }
+        const info: DownloadInfo = await provider.getDownloadInfo(op.itemId);
+        await this.downloadViaHttp(info, targetUri, op.itemName, op.itemId, opId);
+        return;
+      }
+
+      throw new Error(`Retry not supported for type: ${op.type}`);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `retry ${op.itemName} failed: ${err.message}`);
+      tracker.markFailed(opId, err.message);
+    }
   }
 
   // ===========================================================================
@@ -757,40 +1257,211 @@ export class FileBrowserViewModel {
   onShowItemActions(item: CloudItem): void { this.selectedItem = item; }
   closeActionsSheet(): void { this.selectedItem = null; }
 
-  onToggleOffline(isOn: boolean): void {
-    if (this.selectedItem === null) return;
-    const id = this.selectedItem.id;
-    const idx = this.offlineIds.indexOf(id);
-    if (isOn && idx < 0) this.offlineIds = [...this.offlineIds, id];
-    else if (!isOn && idx >= 0) {
-      const next = this.offlineIds.slice();
-      next.splice(idx, 1);
-      this.offlineIds = next;
-    }
-  }
-
-  isOffline(itemId: string): boolean {
-    return this.offlineIds.indexOf(itemId) >= 0;
-  }
-
-  isDownloading(itemId: string): boolean {
-    return this.downloadingIds.indexOf(itemId) >= 0;
-  }
+  isOffline(itemId: string): boolean { return this.offlineIds.indexOf(itemId) >= 0; }
+  isDownloading(itemId: string): boolean { return this.downloadingIds.indexOf(itemId) >= 0; }
 
   private markDownloading(itemId: string, on: boolean): void {
-    const idx = this.downloadingIds.indexOf(itemId);
+    const idx: number = this.downloadingIds.indexOf(itemId);
     if (on && idx < 0) this.downloadingIds = [...this.downloadingIds, itemId];
     else if (!on && idx >= 0) {
-      const next = this.downloadingIds.slice();
+      const next: string[] = this.downloadingIds.slice();
       next.splice(idx, 1);
       this.downloadingIds = next;
     }
   }
 
   canDownloadSelected(): boolean {
-    return this.selectedItem !== null
-      && this.selectedItem.type === CloudItemType.FILE
-      && !this.isDownloading(this.selectedItem.id);
+    if (this.selectedItem === null) return false;
+    if (this.isDownloading(this.selectedItem.id)) return false;
+    if (!FOLDER_DOWNLOAD_ENABLED
+      && this.selectedItem.type === CloudItemType.FOLDER) {
+      return false;
+    }
+    return true;
+  }
+
+  // ===========================================================================
+  // Offline files
+  // ===========================================================================
+
+  private async loadOfflineIds(): Promise<void> {
+    const records: OfflineFileRecord[] = await OfflineStore.getAll();
+    const validRecords: OfflineFileRecord[] = [];
+    const ids: string[] = [];
+
+    for (let i = 0; i < records.length; i++) {
+      const r: OfflineFileRecord = records[i];
+      try {
+        fs.accessSync(r.localPath);
+        validRecords.push(r);
+        ids.push(r.cloudId);
+      } catch (_) {
+        Logger.warn(TAG, `Pruning missing offline file: ${r.name}`);
+      }
+    }
+
+    if (validRecords.length !== records.length) {
+      await OfflineStore.replaceAll(validRecords);
+    }
+    this.offlineIds = ids;
+  }
+
+  async onToggleOffline(isOn: boolean): Promise<void> {
+    if (this.selectedItem === null || this.cloudProvider === null) return;
+
+    const item: CloudItem = this.selectedItem;
+
+    if (item.type === CloudItemType.FOLDER) {
+      promptAction.showToast({ message: 'Folders cannot be made available offline' });
+      return;
+    }
+
+    if (isOn) {
+      await this.saveForOffline(item);
+    } else {
+      await this.removeFromOffline(item);
+    }
+  }
+
+  private async saveForOffline(item: CloudItem): Promise<void> {
+    if (this.cloudProvider === null || this.context === null) return;
+
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+    const accountId: string = this.activeAccountId;
+
+    const tracker: OperationTracker = OperationTracker.get();
+    const opId: string = tracker.register(
+      OperationType.DOWNLOAD, item.name, item.id, OperationItemKind.FILE, 0, 0
+    );
+    tracker.markRunning(opId);
+    this.markDownloading(item.id, true);
+
+    try {
+      const offlineDir: string = ctx.filesDir;
+      const safeId: string = item.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeName: string = item.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const prefix: string = safeId.length > 32 ? safeId.substring(0, 32) : safeId;
+      let trimmedName: string = safeName;
+      if (trimmedName.length > 120) {
+        const dot: number = safeName.lastIndexOf('.');
+        if (dot > 0) {
+          const base: string = safeName.substring(0, dot);
+          const ext: string = safeName.substring(dot);
+          trimmedName = `${base.substring(0, 120 - ext.length)}${ext}`;
+        } else {
+          trimmedName = safeName.substring(0, 120);
+        }
+      }
+      const localPath: string = `${offlineDir}/${prefix}_${trimmedName}`;
+
+      const info: DownloadInfo = await provider.getDownloadInfo(item.id);
+      const bytes: ArrayBuffer = await this.fetchBytes(info, item.name);
+
+      const f = fs.openSync(
+        localPath,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+      );
+      try {
+        fs.writeSync(f.fd, bytes);
+      } finally {
+        fs.closeSync(f);
+      }
+
+      const record: OfflineFileRecord = {
+        cloudId: item.id,
+        accountId: accountId,
+        provider: provider.providerType,
+        name: item.name,
+        localPath: localPath,
+        mimeType: item.mimeType !== undefined ? item.mimeType : '',
+        size: item.size !== undefined ? item.size : bytes.byteLength,
+        downloadedAt: Date.now()
+      };
+      await OfflineStore.add(record);
+
+      if (this.offlineIds.indexOf(item.id) < 0) {
+        this.offlineIds = [...this.offlineIds, item.id];
+      }
+
+      tracker.markSuccess(opId);
+      promptAction.showToast({ message: `"${item.name}" available offline` });
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `saveForOffline failed: ${err.message}`);
+      tracker.markFailed(opId, err.message);
+      promptAction.showToast({ message: `Offline download failed: ${err.message}` });
+    } finally {
+      this.markDownloading(item.id, false);
+    }
+  }
+
+  private async removeFromOffline(item: CloudItem): Promise<void> {
+    const record: OfflineFileRecord | null =
+      await OfflineStore.getById(item.id);
+
+    if (record !== null) {
+      try {
+        fs.unlinkSync(record.localPath);
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.warn(TAG, `Failed to delete offline file: ${err.message}`);
+      }
+    }
+
+    await OfflineStore.remove(item.id);
+
+    const idx: number = this.offlineIds.indexOf(item.id);
+    if (idx >= 0) {
+      const next: string[] = this.offlineIds.slice();
+      next.splice(idx, 1);
+      this.offlineIds = next;
+    }
+    promptAction.showToast({ message: `"${item.name}" removed from offline` });
+  }
+
+  async openOfflineFile(item: CloudItem): Promise<void> {
+    if (this.context === null) return;
+    const ctx: common.UIAbilityContext = this.context;
+
+    const record: OfflineFileRecord | null =
+      await OfflineStore.getById(item.id);
+    if (record === null) {
+      promptAction.showToast({ message: 'File is not available offline' });
+      return;
+    }
+
+    try {
+      fs.accessSync(record.localPath);
+    } catch (_) {
+      await OfflineStore.remove(item.id);
+      const idx: number = this.offlineIds.indexOf(item.id);
+      if (idx >= 0) {
+        const next: string[] = this.offlineIds.slice();
+        next.splice(idx, 1);
+        this.offlineIds = next;
+      }
+      promptAction.showToast({ message: 'Offline file is no longer available' });
+      return;
+    }
+
+    const mime: string = record.mimeType.length > 0
+      ? record.mimeType
+      : 'application/octet-stream';
+
+    try {
+      const want: Want = {
+        action: 'ohos.want.action.viewData',
+        uri: `file://${record.localPath}`,
+        type: mime,
+        flags: wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION
+      };
+      await ctx.startAbility(want);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `startAbility failed: ${err.message}`);
+      promptAction.showToast({ message: `Cannot open file: ${err.message}` });
+    }
   }
 
   // ===========================================================================
@@ -803,13 +1474,11 @@ export class FileBrowserViewModel {
     this.showRenameDialog = true;
   }
 
-  cancelRename(): void {
-    this.showRenameDialog = false;
-  }
+  cancelRename(): void { this.showRenameDialog = false; }
 
   async performRename(): Promise<void> {
     if (this.selectedItem === null || this.cloudProvider === null) return;
-    const newName = this.renameText.trim();
+    const newName: string = this.renameText.trim();
     if (newName.length === 0) {
       promptAction.showToast({ message: 'Name cannot be empty' });
       return;
@@ -819,7 +1488,7 @@ export class FileBrowserViewModel {
       return;
     }
 
-    const targetId = this.selectedItem.id;
+    const targetId: string = this.selectedItem.id;
     this.isProcessing = true;
     try {
       await this.cloudProvider.renameItem(targetId, newName);
@@ -857,14 +1526,13 @@ export class FileBrowserViewModel {
 
   private confirmDelete(items: CloudItem[]): void {
     if (items.length === 0) return;
-    const count = items.length;
-    const hasFolder = items.some((it: CloudItem): boolean =>
-    it.type === CloudItemType.FOLDER
-    );
+    const count: number = items.length;
+    const hasFolder: boolean = items.some((it: CloudItem): boolean =>
+    it.type === CloudItemType.FOLDER);
 
-    const title = count === 1 ? 'Delete' : `Delete ${count} items`;
-    const subject = count === 1 ? `"${items[0].name}"` : `${count} items`;
-    const extra = hasFolder
+    const title: string = count === 1 ? 'Delete' : `Delete ${count} items`;
+    const subject: string = count === 1 ? `"${items[0].name}"` : `${count} items`;
+    const extra: string = hasFolder
       ? ' Folders and their contents will be deleted too.'
       : '';
 
@@ -882,42 +1550,47 @@ export class FileBrowserViewModel {
           this.runBatchDeleteBackground(items);
         }
       })
-      .catch((e: Error) => {
-        Logger.error(TAG, `dialog failed: ${e.message}`);
-      });
+      .catch((e: Error) => { Logger.error(TAG, `dialog failed: ${e.message}`); });
   }
 
   private async runBatchDeleteBackground(items: CloudItem[]): Promise<void> {
     if (this.cloudProvider === null) return;
-    const tracker = OperationTracker.get();
-    let success = 0;
-    let failed = 0;
+    const provider: ICloudProvider = this.cloudProvider;
+    const tracker: OperationTracker = OperationTracker.get();
 
+    const opIds: string[] = [];
     for (let i = 0; i < items.length; i++) {
-      const it = items[i];
+      const it: CloudItem = items[i];
       const kind: OperationItemKind = it.type === CloudItemType.FOLDER
         ? OperationItemKind.FOLDER
         : OperationItemKind.FILE;
+      const deletePayload: RetryPayload = { itemId: it.id };
+      opIds.push(tracker.register(
+        OperationType.DELETE, it.name, it.id, kind, i + 1, items.length,
+        deletePayload
+      ));
+    }
 
-      const opId = tracker.register(
-        OperationType.DELETE, it.name, it.id, kind, i + 1, items.length
-      );
-      tracker.markRunning(opId);
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      tracker.markRunning(opIds[i]);
 
       try {
-        await this.cloudProvider.deleteItem(it.id);
-        tracker.markSuccess(opId);
+        await provider.deleteItem(items[i].id);
+        tracker.markSuccess(opIds[i]);
         success++;
-        const idx = this.offlineIds.indexOf(it.id);
+        const idx: number = this.offlineIds.indexOf(items[i].id);
         if (idx >= 0) {
-          const next = this.offlineIds.slice();
+          const next: string[] = this.offlineIds.slice();
           next.splice(idx, 1);
           this.offlineIds = next;
         }
       } catch (e) {
         const err: Error = e as Error;
-        Logger.error(TAG, `delete ${it.name} failed: ${err.message}`);
-        tracker.markFailed(opId, err.message);
+        Logger.error(TAG, `delete ${items[i].name} failed: ${err.message}`);
+        tracker.markFailed(opIds[i], err.message);
         failed++;
       }
     }
@@ -1015,7 +1688,7 @@ export class FileBrowserViewModel {
     this.movePickerLoading = true;
     this.movePickerError = '';
     try {
-      const all = await this.cloudProvider.listChildren(folderId);
+      const all: CloudItem[] = await this.cloudProvider.listChildren(folderId);
       const hidden: string[] = [];
       for (let i = 0; i < this.pickerItems.length; i++) {
         hidden.push(this.pickerItems[i].id);
@@ -1023,7 +1696,7 @@ export class FileBrowserViewModel {
 
       const folders: CloudItem[] = [];
       for (let i = 0; i < all.length; i++) {
-        const it = all[i];
+        const it: CloudItem = all[i];
         if (it.type !== CloudItemType.FOLDER) continue;
         if (hidden.indexOf(it.id) >= 0) continue;
         if (HIDDEN_PICKER_FOLDER_NAMES.indexOf(it.name) >= 0) continue;
@@ -1050,16 +1723,16 @@ export class FileBrowserViewModel {
   async movePickerGoToCrumb(index: number): Promise<void> {
     if (index < 0 || index >= this.movePickerCrumbs.length) return;
     if (index === this.movePickerCrumbs.length - 1) return;
-    const target = this.movePickerCrumbs[index];
+    const target: Crumb = this.movePickerCrumbs[index];
     this.movePickerCrumbs = this.movePickerCrumbs.slice(0, index + 1);
     await this.loadMovePickerFolder(target.id);
   }
 
   async performPickerConfirm(): Promise<void> {
     if (this.pickerItems.length === 0 || this.cloudProvider === null) return;
-    const items = this.pickerItems.slice();
-    const targetId = this.movePickerFolderId;
-    const mode = this.pickerMode;
+    const items: CloudItem[] = this.pickerItems.slice();
+    const targetId: string = this.movePickerFolderId;
+    const mode: string = this.pickerMode;
 
     if (mode === 'move' && targetId === this.currentFolderId) {
       promptAction.showToast({ message: 'Items are already in this folder' });
@@ -1081,10 +1754,11 @@ export class FileBrowserViewModel {
     targetId: string
   ): Promise<void> {
     if (this.cloudProvider === null) return;
-    const tracker = OperationTracker.get();
+    const provider: ICloudProvider = this.cloudProvider;
+    const tracker: OperationTracker = OperationTracker.get();
 
-    const conflicts = await this.findConflicts(items, targetId);
-    let resolveMode = 'none';
+    const conflicts: CloudItem[] = await this.findConflicts(items, targetId);
+    let resolveMode: string = 'none';
     if (conflicts.length > 0) {
       resolveMode = await this.askBatchConflictChoice(conflicts);
       if (resolveMode === 'skip' && conflicts.length === items.length) {
@@ -1093,45 +1767,51 @@ export class FileBrowserViewModel {
       }
     }
 
-    let success = 0;
-    let failed = 0;
-
+    const opIds: string[] = [];
     for (let i = 0; i < items.length; i++) {
-      const it = items[i];
+      const it: CloudItem = items[i];
       const kind: OperationItemKind = it.type === CloudItemType.FOLDER
         ? OperationItemKind.FOLDER
         : OperationItemKind.FILE;
+      const movePayload: RetryPayload = { targetFolderId: targetId };
+      opIds.push(tracker.register(
+        OperationType.MOVE, it.name, it.id, kind, i + 1, items.length,
+        movePayload
+      ));
+    }
 
-      const opId = tracker.register(
-        OperationType.MOVE, it.name, it.id, kind, i + 1, items.length
-      );
-      tracker.markRunning(opId);
-      const hasConflict = conflicts.some((c: CloudItem): boolean =>
-      c.id === it.id
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const it: CloudItem = items[i];
+      tracker.markRunning(opIds[i]);
+      const hasConflict: boolean = conflicts.some(
+        (c: CloudItem): boolean => c.id === it.id
       );
 
       try {
         if (!hasConflict) {
-          await this.cloudProvider.moveItem(it.id, targetId);
+          await provider.moveItem(it.id, targetId);
         } else if (resolveMode === 'skip') {
-          tracker.markCancelled(opId);
+          tracker.markCancelled(opIds[i]);
           continue;
         } else if (resolveMode === 'keep-both') {
-          const newName = await this.findAvailableName(it.name, targetId);
-          await this.cloudProvider.moveItem(it.id, targetId, newName);
+          const newName: string =
+            await this.findAvailableCloudName(it.name, targetId);
+          await provider.moveItem(it.id, targetId, newName);
         } else if (resolveMode === 'replace') {
-          const sibling = await this.findSiblingByName(targetId, it.name);
-          if (sibling !== null) {
-            await this.cloudProvider.deleteItem(sibling.id);
-          }
-          await this.cloudProvider.moveItem(it.id, targetId);
+          const sibling: CloudItem | null =
+            await this.findSiblingByName(targetId, it.name);
+          if (sibling !== null) await provider.deleteItem(sibling.id);
+          await provider.moveItem(it.id, targetId);
         }
-        tracker.markSuccess(opId);
+        tracker.markSuccess(opIds[i]);
         success++;
       } catch (e) {
         const err: Error = e as Error;
         Logger.error(TAG, `move ${it.name} failed: ${err.message}`);
-        tracker.markFailed(opId, err.message);
+        tracker.markFailed(opIds[i], err.message);
         failed++;
       }
     }
@@ -1154,10 +1834,11 @@ export class FileBrowserViewModel {
     targetId: string
   ): Promise<void> {
     if (this.cloudProvider === null) return;
-    const tracker = OperationTracker.get();
+    const provider: ICloudProvider = this.cloudProvider;
+    const tracker: OperationTracker = OperationTracker.get();
 
-    const conflicts = await this.findConflicts(items, targetId);
-    let resolveMode = 'none';
+    const conflicts: CloudItem[] = await this.findConflicts(items, targetId);
+    let resolveMode: string = 'none';
     if (conflicts.length > 0) {
       resolveMode = await this.askBatchConflictChoice(conflicts);
       if (resolveMode === 'skip' && conflicts.length === items.length) {
@@ -1166,61 +1847,64 @@ export class FileBrowserViewModel {
       }
     }
 
-    let success = 0;
-    let failed = 0;
-
+    const opIds: string[] = [];
     for (let i = 0; i < items.length; i++) {
-      const it = items[i];
+      const it: CloudItem = items[i];
       const kind: OperationItemKind = it.type === CloudItemType.FOLDER
         ? OperationItemKind.FOLDER
         : OperationItemKind.FILE;
+      const copyPayload: RetryPayload = { targetFolderId: targetId };
+      opIds.push(tracker.register(
+        OperationType.COPY, it.name, it.id, kind, i + 1, items.length,
+        copyPayload
+      ));
+    }
 
-      const opId = tracker.register(
-        OperationType.COPY, it.name, it.id, kind, i + 1, items.length
-      );
-      tracker.markRunning(opId);
-      const hasConflict = conflicts.some((c: CloudItem): boolean =>
-      c.id === it.id
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const it: CloudItem = items[i];
+      tracker.markRunning(opIds[i]);
+      const hasConflict: boolean = conflicts.some(
+        (c: CloudItem): boolean => c.id === it.id
       );
 
       try {
         let finalName: string | undefined = undefined;
 
         if (!hasConflict) {
-          // No conflict — copy with the original name.
+          // no conflict
         } else if (resolveMode === 'skip') {
-          tracker.markCancelled(opId);
+          tracker.markCancelled(opIds[i]);
           continue;
         } else if (resolveMode === 'keep-both') {
-          finalName = await this.findAvailableName(it.name, targetId);
+          finalName = await this.findAvailableCloudName(it.name, targetId);
         } else if (resolveMode === 'replace') {
-          const sibling = await this.findSiblingByName(targetId, it.name);
-          if (sibling !== null) {
-            await this.cloudProvider.deleteItem(sibling.id);
-          }
+          const sibling: CloudItem | null =
+            await this.findSiblingByName(targetId, it.name);
+          if (sibling !== null) await provider.deleteItem(sibling.id);
         }
 
         const monitorUrl: string | null =
-          await this.cloudProvider.copyItem(it.id, targetId, finalName);
+          await provider.copyItem(it.id, targetId, finalName);
 
         if (monitorUrl !== null && monitorUrl.length > 0) {
-          await this.pollCopyMonitor(monitorUrl, opId);
+          await this.pollCopyMonitor(monitorUrl, opIds[i]);
         } else {
-          tracker.markSuccess(opId);
+          tracker.markSuccess(opIds[i]);
         }
         success++;
       } catch (e) {
         const err: Error = e as Error;
         Logger.error(TAG, `copy ${it.name} failed: ${err.message}`);
-        tracker.markFailed(opId, err.message);
+        tracker.markFailed(opIds[i], err.message);
         failed++;
       }
     }
 
     if (targetId === this.currentFolderId) {
-      setTimeout(() => {
-        this.loadFolder(this.currentFolderId);
-      }, 900);
+      setTimeout(() => { this.loadFolder(this.currentFolderId); }, 900);
     } else {
       await this.loadFolder(this.currentFolderId);
     }
@@ -1237,9 +1921,9 @@ export class FileBrowserViewModel {
   }
 
   private async pollCopyMonitor(monitorUrl: string, opId: string): Promise<void> {
-    const tracker = OperationTracker.get();
-    const maxAttempts = 600;
-    const intervalMs = 1000;
+    const tracker: OperationTracker = OperationTracker.get();
+    const maxAttempts: number = 600;
+    const intervalMs: number = 1000;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await this.sleep(intervalMs);
@@ -1251,13 +1935,12 @@ export class FileBrowserViewModel {
         const response = await HttpClient.requestWithHeaders(monitorUrl, opts);
 
         if (response.statusCode === 200) {
-          Logger.info(TAG, `Copy monitor finished after ${attempt + 1} polls.`);
           tracker.markSuccess(opId);
           return;
         }
 
         if (response.statusCode === 202) {
-          const pct = Math.min(95, Math.floor(((attempt + 1) / 30) * 100));
+          const pct: number = Math.min(95, Math.floor(((attempt + 1) / 30) * 100));
           tracker.updateProgress(opId, pct);
           continue;
         }
@@ -1291,11 +1974,11 @@ export class FileBrowserViewModel {
     targetId: string
   ): Promise<CloudItem[]> {
     if (this.cloudProvider === null) return [];
-    const siblings = await this.cloudProvider.listChildren(targetId);
+    const siblings: CloudItem[] = await this.cloudProvider.listChildren(targetId);
     const out: CloudItem[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      const sourceName = items[i].name.toLowerCase();
+      const sourceName: string = items[i].name.toLowerCase();
       for (let j = 0; j < siblings.length; j++) {
         if (siblings[j].name.toLowerCase() === sourceName) {
           out.push(items[i]);
@@ -1308,8 +1991,8 @@ export class FileBrowserViewModel {
 
   private askBatchConflictChoice(conflicts: CloudItem[]): Promise<string> {
     return new Promise<string>((resolve: (v: string) => void) => {
-      const count = conflicts.length;
-      const preview = count === 1
+      const count: number = conflicts.length;
+      const preview: string = count === 1
         ? `"${conflicts[0].name}" already exists in the destination.`
         : `${count} items already exist in the destination.`;
 
@@ -1327,29 +2010,21 @@ export class FileBrowserViewModel {
           else if (r.index === 1) resolve('keep-both');
           else resolve('replace');
         })
-        .catch(() => {
-          resolve('skip');
-        });
+        .catch(() => { resolve('skip'); });
     });
   }
 
-  private async findAvailableName(
+  private async findAvailableCloudName(
     originalName: string,
     targetFolderId: string
   ): Promise<string> {
     if (this.cloudProvider === null) return originalName;
-    const siblings = await this.cloudProvider.listChildren(targetFolderId);
+    const siblings: CloudItem[] = await this.cloudProvider.listChildren(targetFolderId);
     const existing: string[] = [];
     for (let i = 0; i < siblings.length; i++) {
       existing.push(siblings[i].name.toLowerCase());
     }
-
-    const parts = FileBrowserViewModel.splitName(originalName);
-    for (let i = 1; i < 1000; i++) {
-      const candidate = `${parts.base} (${i})${parts.ext}`;
-      if (existing.indexOf(candidate.toLowerCase()) < 0) return candidate;
-    }
-    throw new Error('Could not find an available name.');
+    return FileBrowserViewModel.findAvailableName(originalName, existing);
   }
 
   private async findSiblingByName(
@@ -1357,8 +2032,8 @@ export class FileBrowserViewModel {
     name: string
   ): Promise<CloudItem | null> {
     if (this.cloudProvider === null) return null;
-    const siblings = await this.cloudProvider.listChildren(targetFolderId);
-    const target = name.toLowerCase();
+    const siblings: CloudItem[] = await this.cloudProvider.listChildren(targetFolderId);
+    const target: string = name.toLowerCase();
     for (let i = 0; i < siblings.length; i++) {
       if (siblings[i].name.toLowerCase() === target) return siblings[i];
     }
@@ -1370,6 +2045,14 @@ export class FileBrowserViewModel {
   // ===========================================================================
 
   openCreateFolderPrompt(): void {
+    this.createFolderTargetId = this.movePickerFolderId;
+    this.newFolderName = '';
+    this.showCreateFolderDialog = true;
+  }
+
+  openNewFolderPrompt(): void {
+    this.closeUploadMenu();
+    this.createFolderTargetId = this.currentFolderId;
     this.newFolderName = '';
     this.showCreateFolderDialog = true;
   }
@@ -1381,17 +2064,23 @@ export class FileBrowserViewModel {
 
   async performCreateFolder(): Promise<void> {
     if (this.cloudProvider === null) return;
-    const name = this.newFolderName.trim();
+    const name: string = this.newFolderName.trim();
     if (name.length === 0) {
       promptAction.showToast({ message: 'Folder name cannot be empty' });
       return;
     }
+
     this.isCreatingFolder = true;
     try {
-      await this.cloudProvider.createFolder(this.movePickerFolderId, name);
+      await this.cloudProvider.createFolder(this.createFolderTargetId, name);
       this.showCreateFolderDialog = false;
       this.newFolderName = '';
-      await this.loadMovePickerFolder(this.movePickerFolderId);
+
+      if (this.createFolderTargetId === this.currentFolderId) {
+        await this.loadFolder(this.currentFolderId);
+      } else {
+        await this.loadMovePickerFolder(this.createFolderTargetId);
+      }
       promptAction.showToast({ message: `Folder "${name}" created` });
     } catch (e) {
       const err: Error = e as Error;
@@ -1402,171 +2091,194 @@ export class FileBrowserViewModel {
   }
 
   // ===========================================================================
-  // Download
+  // Download — single file
   // ===========================================================================
 
   async onDownloadItem(): Promise<void> {
     if (this.selectedItem === null || this.cloudProvider === null) return;
-    const item = this.selectedItem;
-    if (item.type !== CloudItemType.FILE) {
-      promptAction.showToast({ message: 'Folders cannot be downloaded' });
-      return;
-    }
-    const itemId = item.id;
-    const itemName = item.name;
 
-    this.closeActionsSheet();
+    const item: CloudItem = this.selectedItem;
 
-    const tracker = OperationTracker.get();
-    const opId = tracker.register(
-      OperationType.DOWNLOAD, itemName, itemId, OperationItemKind.FILE, 0, 0
-    );
-    tracker.markRunning(opId);
-    this.markDownloading(itemId, true);
-
-    try {
-      const saveUri = await this.pickSaveLocation(itemName);
-      if (saveUri === null) {
-        tracker.markCancelled(opId);
-        this.markDownloading(itemId, false);
+    if (item.type === CloudItemType.FOLDER) {
+      this.closeActionsSheet();
+      if (!FOLDER_DOWNLOAD_ENABLED) {
+        promptAction.showToast({ message: 'Folders cannot be downloaded' });
         return;
       }
+      await this.downloadFolderAsZip(item);
+      return;
+    }
 
-      // Log the exact URI so we can verify it in Logcat.
-      Logger.info(TAG, `Picker returned save URI: ${saveUri}`);
+    this.closeActionsSheet();
+    await this.downloadSingleFileWithPicker(item);
+  }
 
-      const info: DownloadInfo = await this.cloudProvider.getDownloadInfo(itemId);
-      await this.startAgentDownload(info, saveUri, itemName, itemId, opId);
+  private async downloadSingleFileWithPicker(item: CloudItem): Promise<void> {
+    if (this.cloudProvider === null || this.context === null) return;
+
+    const saveUri: string | null = await this.pickSaveLocation(item.name);
+    if (saveUri === null) {
+      Logger.info(TAG, 'Single-file download cancelled at picker.');
+      return;
+    }
+
+    const tracker: OperationTracker = OperationTracker.get();
+    const dlPayload: RetryPayload = { targetUri: saveUri };
+    const opId: string = tracker.register(
+      OperationType.DOWNLOAD, item.name, item.id, OperationItemKind.FILE, 0, 0,
+      dlPayload
+    );
+    tracker.markRunning(opId);
+    this.markDownloading(item.id, true);
+
+    try {
+      const info: DownloadInfo = await this.cloudProvider.getDownloadInfo(item.id);
+      await this.downloadViaHttp(info, saveUri, item.name, item.id, opId);
+      promptAction.showToast({ message: `Downloaded: ${item.name}` });
     } catch (e) {
       const err: Error = e as Error;
-      tracker.markFailed(opId, err.message);
-      this.markDownloading(itemId, false);
       promptAction.showToast({ message: `Download failed: ${err.message}` });
     }
   }
 
-  private async pickSaveLocation(fileName: string): Promise<string | null> {
-    const documentPicker = new picker.DocumentViewPicker();
-    const saveOptions = new picker.DocumentSaveOptions();
+  // ===========================================================================
+  // Download — batch
+  // ===========================================================================
 
-    // Prepopulate the filename field — the full name, INCLUDING extension.
-    // Do NOT set fileSuffixChoices: when both are set, the picker strips
-    // the extension from the name field and turns it into a separate
-    // "file type" dropdown, leaving the name field showing only the base.
+  async onBatchDownload(): Promise<void> {
+    if (!this.hasSelection() || this.cloudProvider === null) return;
+
+    const selected: CloudItem[] = this.getSelectedItems();
+    const files: CloudItem[] = [];
+    let folderCount: number = 0;
+    for (let i = 0; i < selected.length; i++) {
+      if (selected[i].type === CloudItemType.FOLDER) folderCount++;
+      else files.push(selected[i]);
+    }
+
+    if (folderCount > 0) {
+      if (!FOLDER_DOWNLOAD_ENABLED) {
+        promptAction.showToast({
+          message: folderCount === 1
+            ? 'Folders cannot be downloaded'
+            : 'Folders cannot be downloaded — deselect them and try again'
+        });
+        return;
+      }
+      this.exitSelectionMode();
+      await this.downloadSelectionAsZip(files, this.getSelectedFolders(selected));
+      return;
+    }
+
+    if (files.length === 0) {
+      promptAction.showToast({ message: 'Select at least one file to download' });
+      return;
+    }
+
+    if (files.length === 1) {
+      this.exitSelectionMode();
+      await this.downloadSingleFileWithPicker(files[0]);
+      return;
+    }
+
+    this.exitSelectionMode();
+    await this.downloadFilesToFolder(files);
+  }
+
+  private async downloadFilesToFolder(files: CloudItem[]): Promise<void> {
+    if (this.cloudProvider === null) return;
+    const provider: ICloudProvider = this.cloudProvider;
+
+    const destUri: string | null = await this.pickDestinationFolder();
+    if (destUri === null) return;
+
+    const tracker: OperationTracker = OperationTracker.get();
+
+    const opIds: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const item: CloudItem = files[i];
+      const targetUri: string =
+        FileBrowserViewModel.appendToUri(destUri, item.name);
+      const dlPayload: RetryPayload = { targetUri: targetUri };
+      opIds.push(tracker.register(
+        OperationType.DOWNLOAD,
+        item.name,
+        item.id,
+        OperationItemKind.FILE,
+        i + 1,
+        files.length,
+        dlPayload
+      ));
+    }
+
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const item: CloudItem = files[i];
+      tracker.markRunning(opIds[i]);
+      this.markDownloading(item.id, true);
+
+      try {
+        const info: DownloadInfo = await provider.getDownloadInfo(item.id);
+        const targetUri: string =
+          FileBrowserViewModel.appendToUri(destUri, item.name);
+        await this.downloadViaHttp(info, targetUri, item.name, item.id, opIds[i]);
+        success++;
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.error(TAG, `Download failed for ${item.name}: ${err.message}`);
+        failed++;
+      }
+    }
+
+    if (failed === 0) {
+      promptAction.showToast({ message: `Downloaded ${success} files` });
+    } else {
+      promptAction.showToast({ message: `Downloaded ${success}, failed ${failed}` });
+    }
+  }
+
+  private async pickDestinationFolder(): Promise<string | null> {
+    if (this.context === null) return null;
+    const ctx: common.UIAbilityContext = this.context;
+
+    try {
+      const p = new picker.DocumentViewPicker(ctx);
+      const options = new picker.DocumentSaveOptions();
+      options.pickerMode = picker.DocumentPickerMode.DOWNLOAD;
+
+      const result: string[] = await p.save(options);
+      if (result === null || result === undefined || result.length === 0) {
+        return null;
+      }
+      return result[0];
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.info(TAG, `pickDestinationFolder cancelled: ${err.message}`);
+      return null;
+    }
+  }
+
+  private async pickSaveLocation(fileName: string): Promise<string | null> {
+    if (this.context === null) return null;
+    const ctx: common.UIAbilityContext = this.context;
+
+    const documentPicker = new picker.DocumentViewPicker(ctx);
+    const saveOptions = new picker.DocumentSaveOptions();
     saveOptions.newFileNames = [fileName];
 
-    const result = await documentPicker.save(saveOptions);
+    const result: string[] = await documentPicker.save(saveOptions);
     if (result === null || result === undefined || result.length === 0) {
       return null;
     }
     return result[0];
   }
 
-  private async startAgentDownload(
-    info: DownloadInfo,
-    targetUri: string,
-    fileName: string,
-    itemId: string,
-    opId: string
-  ): Promise<void> {
-    if (this.context === null) throw new Error('Context not set');
-    const tracker = OperationTracker.get();
+  // ===========================================================================
+  // Download — HTTP transfer
+  // ===========================================================================
 
-    // Build header Record for request.agent.
-    const headerObj: Record<string, string> = {};
-    Reflect.set(
-      headerObj,
-      'User-Agent',
-      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 ' +
-        '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
-    );
-    Reflect.set(headerObj, 'Accept', '*/*');
-    info.headers.forEach((value: string, key: string): void => {
-      Reflect.set(headerObj, key, value);
-    });
-
-    Logger.info(TAG, `Starting download: url=${info.url}`);
-
-    const config: request.agent.Config = {
-      action: request.agent.Action.DOWNLOAD,
-      url: info.url,
-      saveas: targetUri,
-      gauge: true,
-      overwrite: true,
-      network: request.agent.Network.ANY,
-      mode: request.agent.Mode.FOREGROUND,
-      headers: headerObj
-    };
-
-    try {
-      const task = await request.agent.create(this.context, config);
-
-      const succeeded = await new Promise<boolean>((resolve) => {
-        task.on('progress', (p: request.agent.Progress) => {
-          let total = 0;
-          if (p.sizes !== undefined && p.sizes.length > 0) {
-            total = p.sizes[p.sizes.length - 1];
-          }
-          if (total > 0) {
-            const pct = Math.floor((p.processed / total) * 100);
-            tracker.updateProgress(opId, pct);
-          }
-        });
-
-        task.on('completed', () => {
-          request.agent.remove(task.tid).catch(() => {});
-          resolve(true);
-        });
-
-        task.on('failed', (p: request.agent.Progress) => {
-          Logger.error(
-            TAG,
-            `request.agent failed: state=${p.state}, ` +
-              `extras=${JSON.stringify(p.extras)}`
-          );
-          request.agent.remove(task.tid).catch(() => {});
-          resolve(false);
-        });
-
-        task.start((err: Error) => {
-          if (err) {
-            Logger.error(TAG, `task.start error: ${err.message}`);
-            resolve(false);
-          }
-        });
-      });
-
-      if (succeeded) {
-        tracker.markSuccess(opId);
-        this.markDownloading(itemId, false);
-        promptAction.showToast({ message: `Downloaded: ${fileName}` });
-        return;
-      }
-
-      // Fallback: download via direct HTTP.
-      Logger.info(TAG, 'request.agent failed — falling back to HttpClient.');
-      await this.downloadViaHttp(info, targetUri, fileName, itemId, opId);
-    } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `startAgentDownload threw: ${err.message}`);
-      // Try the fallback anyway.
-      try {
-        await this.downloadViaHttp(info, targetUri, fileName, itemId, opId);
-      } catch (e2) {
-        const err2: Error = e2 as Error;
-        tracker.markFailed(opId, err2.message);
-        this.markDownloading(itemId, false);
-        promptAction.showToast({ message: `Download failed: ${err2.message}` });
-      }
-    }
-  }
-
-  /**
-   * Direct HTTP download. Fetches the file bytes via @ohos.net.http and
-   * writes them to the picker-provided URI. Bypasses request.agent entirely,
-   * which is necessary for Google Drive because request.agent refuses the
-   * Authorization header + cross-domain redirect combination.
-   */
   private async downloadViaHttp(
     info: DownloadInfo,
     targetUri: string,
@@ -1574,11 +2286,16 @@ export class FileBrowserViewModel {
     itemId: string,
     opId: string
   ): Promise<void> {
-    const tracker = OperationTracker.get();
+    if (this.context === null) throw new Error('Context not set');
+    const ctx: common.UIAbilityContext = this.context;
+
+    const tracker: OperationTracker = OperationTracker.get();
     const request = http.createHttp();
 
+    const baseName: string = FileBrowserViewModel.basename(fileName);
+    const sandboxPath: string = `${ctx.cacheDir}/${baseName}`;
+
     try {
-      // Build headers as a Record (the HTTP module expects a plain object).
       const headerObj: Record<string, string> = {};
       Reflect.set(
         headerObj,
@@ -1591,8 +2308,6 @@ export class FileBrowserViewModel {
         Reflect.set(headerObj, key, value);
       });
 
-      Logger.info(TAG, `HTTP fallback URL: ${info.url}`);
-
       const requestOptions: http.HttpRequestOptions = {
         method: http.RequestMethod.GET,
         header: headerObj,
@@ -1604,7 +2319,6 @@ export class FileBrowserViewModel {
       const response = await request.request(info.url, requestOptions);
 
       if (response.responseCode < 200 || response.responseCode >= 300) {
-        // Decode the ArrayBuffer error body so we can see Google's message.
         let errorBody: string = '';
         try {
           const buf: ArrayBuffer = response.result as ArrayBuffer;
@@ -1613,30 +2327,489 @@ export class FileBrowserViewModel {
         } catch (_) {
           errorBody = '(could not decode body)';
         }
-        Logger.error(TAG, `HTTP ${response.responseCode} body: ${errorBody}`);
         throw new Error(`HTTP ${response.responseCode}: ${errorBody}`);
       }
+
+      const bytes: ArrayBuffer = response.result as ArrayBuffer;
+
+      const sandboxFile = fs.openSync(
+        sandboxPath,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+      );
+      try {
+        fs.writeSync(sandboxFile.fd, bytes);
+      } finally {
+        fs.closeSync(sandboxFile);
+      }
+
+      await this.copySandboxToDestination(sandboxPath, targetUri, fileName);
+
+      tracker.markSuccess(opId);
+      this.markDownloading(itemId, false);
     } catch (e) {
       const err: Error = e as Error;
-      Logger.error(TAG, `downloadViaHttp failed: ${err.message}`);
+      Logger.error(TAG, `downloadViaHttp failed for ${fileName}: ${err.message}`);
       this.removeEmptyFile(targetUri);
-      tracker.markFailed(opId, err.message);
       this.markDownloading(itemId, false);
-      promptAction.showToast({ message: `Download failed: ${err.message}` });
+      tracker.markFailed(opId, err.message);
       throw err;
     } finally {
       request.destroy();
+      try {
+        fs.accessSync(sandboxPath);
+        fs.unlinkSync(sandboxPath);
+      } catch (_) { /* already gone */ }
+    }
+  }
+
+  private async copySandboxToDestination(
+    sandboxPath: string,
+    targetUri: string,
+    fileName: string
+  ): Promise<void> {
+    let destPath: string = '';
+    try {
+      const uriObj = new fileUri.FileUri(targetUri);
+      destPath = uriObj.path;
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.warn(TAG, `fileUri conversion failed: ${err.message}`);
+      destPath = targetUri.startsWith('file://')
+        ? targetUri.substring('file://'.length)
+        : targetUri;
+    }
+
+    const srcFile = fs.openSync(sandboxPath, fs.OpenMode.READ_ONLY);
+    let destFile: fs.File | null = null;
+    try {
+      destFile = fs.openSync(
+        destPath,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+      );
+      fs.copyFileSync(srcFile.fd, destFile.fd);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `Copy to destination failed: ${err.message}`);
+      throw err;
+    } finally {
+      fs.closeSync(srcFile);
+      if (destFile !== null) fs.closeSync(destFile);
     }
   }
 
   private removeEmptyFile(uri: string): void {
     try {
-      const path = FileBrowserViewModel.uriToPath(uri);
+      const path: string = FileBrowserViewModel.uriToPath(uri);
       const stat = fs.statSync(path);
       if (stat.size === 0) fs.unlinkSync(path);
-    } catch (_) {
-      // File missing or unlink failed — safe to ignore.
+    } catch (_) { /* ignore */ }
+  }
+
+  // ===========================================================================
+  // Download — folder ZIP (preserved for future re-enable)
+  // ===========================================================================
+
+  private async downloadFolderAsZip(folder: CloudItem): Promise<void> {
+    if (this.cloudProvider === null || this.context === null) return;
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+
+    const tasks: DownloadTask[] = [];
+    const folderPaths: string[] = [];
+    const counter: TaskCounter = { total: 0 };
+
+    await this.collectFolderTasks(folder, folder.name, tasks, folderPaths, counter);
+
+    if (tasks.length === 0 && folderPaths.length === 0) {
+      promptAction.showToast({ message: 'Folder is empty' });
+      return;
     }
+
+    const zipName: string = `${folder.name}.zip`;
+    const destUri: string | null = await this.pickSaveLocation(zipName);
+    if (destUri === null) return;
+
+    const stagingDir: string = `${ctx.cacheDir}/staging_${Date.now()}`;
+    this.ensureDir(stagingDir);
+    for (let i = 0; i < folderPaths.length; i++) {
+      this.ensureDir(`${stagingDir}/${folderPaths[i]}`);
+    }
+
+    const tracker: OperationTracker = OperationTracker.get();
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < tasks.length; i++) {
+      const task: DownloadTask = tasks[i];
+      const opId: string = tracker.register(
+        OperationType.DOWNLOAD, task.relativePath, task.cloudId,
+        OperationItemKind.FILE, i + 1, counter.total
+      );
+      tracker.markRunning(opId);
+
+      try {
+        const info: DownloadInfo = await provider.getDownloadInfo(task.cloudId);
+        const bytes: ArrayBuffer = await this.fetchBytes(info, task.relativePath);
+
+        const localPath: string = `${stagingDir}/${task.relativePath}`;
+        const parentDir: string = localPath.substring(0, localPath.lastIndexOf('/'));
+        this.ensureDir(parentDir);
+
+        const f = fs.openSync(
+          localPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+        );
+        try { fs.writeSync(f.fd, bytes); } finally { fs.closeSync(f); }
+
+        tracker.markSuccess(opId);
+        success++;
+      } catch (e) {
+        const err: Error = e as Error;
+        tracker.markFailed(opId, err.message);
+        failed++;
+      }
+    }
+
+    if (success === 0) {
+      promptAction.showToast({ message: 'Failed to download any files' });
+      this.removeDirRecursive(stagingDir);
+      return;
+    }
+
+    const zipPath: string = `${ctx.cacheDir}/${zipName}`;
+    try {
+      const options: zlib.Options = {
+        level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
+        memLevel: zlib.MemLevel.MEM_LEVEL_DEFAULT,
+        strategy: zlib.CompressStrategy.COMPRESS_STRATEGY_DEFAULT_STRATEGY
+      };
+      await zlib.compressFile(stagingDir, zipPath, options);
+      await this.copySandboxToDestination(zipPath, destUri, zipName);
+      promptAction.showToast({ message: `Downloaded "${zipName}"` });
+    } catch (e) {
+      const err: Error = e as Error;
+      promptAction.showToast({ message: `Failed: ${err.message}` });
+    } finally {
+      this.removeDirRecursive(stagingDir);
+      try { fs.accessSync(zipPath); fs.unlinkSync(zipPath); } catch (_) { /* ignore */ }
+    }
+  }
+
+  private async downloadSelectionAsZip(
+    files: CloudItem[],
+    folders: CloudItem[]
+  ): Promise<void> {
+    if (this.cloudProvider === null || this.context === null) return;
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+
+    const tasks: DownloadTask[] = [];
+    const folderPaths: string[] = [];
+    const counter: TaskCounter = { total: 0 };
+
+    for (let i = 0; i < files.length; i++) {
+      tasks.push({
+        cloudId: files[i].id,
+        relativePath: files[i].name,
+        kind: OperationItemKind.FILE
+      });
+      counter.total++;
+    }
+    for (let i = 0; i < folders.length; i++) {
+      await this.collectFolderTasks(
+        folders[i], folders[i].name, tasks, folderPaths, counter
+      );
+    }
+
+    if (tasks.length === 0) {
+      promptAction.showToast({ message: 'Nothing to download' });
+      return;
+    }
+
+    const zipName: string = `CLDrive_${Date.now()}.zip`;
+    const destUri: string | null = await this.pickSaveLocation(zipName);
+    if (destUri === null) return;
+
+    const stagingDir: string = `${ctx.cacheDir}/staging_${Date.now()}`;
+    this.ensureDir(stagingDir);
+    for (let i = 0; i < folderPaths.length; i++) {
+      this.ensureDir(`${stagingDir}/${folderPaths[i]}`);
+    }
+
+    const tracker: OperationTracker = OperationTracker.get();
+    let success: number = 0;
+    let failed: number = 0;
+
+    for (let i = 0; i < tasks.length; i++) {
+      const task: DownloadTask = tasks[i];
+      const opId: string = tracker.register(
+        OperationType.DOWNLOAD, task.relativePath, task.cloudId,
+        OperationItemKind.FILE, i + 1, counter.total
+      );
+      tracker.markRunning(opId);
+
+      try {
+        const info: DownloadInfo = await provider.getDownloadInfo(task.cloudId);
+        const bytes: ArrayBuffer = await this.fetchBytes(info, task.relativePath);
+
+        const localPath: string = `${stagingDir}/${task.relativePath}`;
+        const parentDir: string = localPath.substring(0, localPath.lastIndexOf('/'));
+        this.ensureDir(parentDir);
+
+        const f = fs.openSync(
+          localPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+        );
+        try { fs.writeSync(f.fd, bytes); } finally { fs.closeSync(f); }
+
+        tracker.markSuccess(opId);
+        success++;
+      } catch (e) {
+        const err: Error = e as Error;
+        tracker.markFailed(opId, err.message);
+        failed++;
+      }
+    }
+
+    if (success === 0) {
+      promptAction.showToast({ message: 'Failed to download any files' });
+      this.removeDirRecursive(stagingDir);
+      return;
+    }
+
+    const zipPath: string = `${ctx.cacheDir}/${zipName}`;
+    try {
+      const options: zlib.Options = {
+        level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
+        memLevel: zlib.MemLevel.MEM_LEVEL_DEFAULT,
+        strategy: zlib.CompressStrategy.COMPRESS_STRATEGY_DEFAULT_STRATEGY
+      };
+      await zlib.compressFile(stagingDir, zipPath, options);
+      await this.copySandboxToDestination(zipPath, destUri, zipName);
+      promptAction.showToast({ message: `Downloaded ${success} files as ZIP` });
+    } catch (e) {
+      const err: Error = e as Error;
+      promptAction.showToast({ message: `Failed: ${err.message}` });
+    } finally {
+      this.removeDirRecursive(stagingDir);
+      try { fs.accessSync(zipPath); fs.unlinkSync(zipPath); } catch (_) { /* ignore */ }
+    }
+  }
+
+  private async collectFolderTasks(
+    folder: CloudItem,
+    relativePath: string,
+    tasks: DownloadTask[],
+    folderPaths: string[],
+    counter: TaskCounter
+  ): Promise<void> {
+    if (this.cloudProvider === null) return;
+
+    folderPaths.push(relativePath);
+
+    let children: CloudItem[] = [];
+    try {
+      children = await this.cloudProvider.listChildren(folder.id);
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `listChildren(${relativePath}) failed: ${err.message}`);
+      return;
+    }
+
+    for (let i = 0; i < children.length; i++) {
+      const child: CloudItem = children[i];
+      const childPath: string = `${relativePath}/${child.name}`;
+
+      if (child.type === CloudItemType.FOLDER) {
+        await this.collectFolderTasks(
+          child, childPath, tasks, folderPaths, counter
+        );
+      } else {
+        tasks.push({
+          cloudId: child.id,
+          relativePath: childPath,
+          kind: OperationItemKind.FILE
+        });
+        counter.total++;
+      }
+    }
+  }
+
+  private async fetchBytes(
+    info: DownloadInfo,
+    label: string
+  ): Promise<ArrayBuffer> {
+    const request = http.createHttp();
+    try {
+      const headerObj: Record<string, string> = {};
+      Reflect.set(
+        headerObj,
+        'User-Agent',
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 ' +
+          '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+      );
+      Reflect.set(headerObj, 'Accept', '*/*');
+      info.headers.forEach((value: string, key: string): void => {
+        Reflect.set(headerObj, key, value);
+      });
+
+      const opts: http.HttpRequestOptions = {
+        method: http.RequestMethod.GET,
+        header: headerObj,
+        expectDataType: http.HttpDataType.ARRAY_BUFFER,
+        readTimeout: 120_000,
+        connectTimeout: 30_000
+      };
+
+      const response = await request.request(info.url, opts);
+      if (response.responseCode < 200 || response.responseCode >= 300) {
+        throw new Error(`HTTP ${response.responseCode} for ${label}`);
+      }
+      return response.result as ArrayBuffer;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  // ===========================================================================
+  // Filesystem helpers
+  // ===========================================================================
+
+  /**
+   * Copy a picked file into the app's sandbox and return the persistent
+   * sandbox path. Picker URIs are session-scoped; the sandbox copy makes
+   * retries work after app restarts.
+   */
+  private async copyPickerUriToSandbox(
+    uri: string,
+    fileName: string
+  ): Promise<string> {
+    if (this.context === null) throw new Error('Context not set');
+    const ctx: common.UIAbilityContext = this.context;
+
+    const safeName: string = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uniqueId: string = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const uploadsDir: string = `${ctx.filesDir}/uploads`;
+    this.ensureDir(uploadsDir);
+    const sandboxPath: string = `${uploadsDir}/${uniqueId}_${safeName}`;
+
+    const srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    try {
+      const destFile = fs.openSync(
+        sandboxPath,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+      );
+      try {
+        fs.copyFileSync(srcFile.fd, destFile.fd);
+      } finally {
+        fs.closeSync(destFile);
+      }
+    } finally {
+      fs.closeSync(srcFile);
+    }
+
+    Logger.info(TAG, `Copied picker URI to sandbox: ${sandboxPath}`);
+    return sandboxPath;
+  }
+
+  /**
+   * Return true if a URI resolves to a path inside the app's sandbox
+   * (filesDir or cacheDir). Picker URIs live under user storage
+   * ("/storage/Users/currentUser/...") and are NOT sandbox paths.
+   *
+   * Upload retries only work when the source is a sandbox path — the
+   * picker grant is session-scoped and gone after a restart.
+   */
+  private isSandboxPath(uri: string | undefined | null): boolean {
+    if (uri === undefined || uri === null || uri.length === 0) return false;
+    if (this.context === null) return false;
+
+    let path: string = uri;
+    if (path.startsWith('file://')) {
+      try {
+        path = new fileUri.FileUri(path).path;
+      } catch (_) {
+        path = path.substring('file://'.length);
+      }
+    }
+
+    const filesDir: string = this.context.filesDir;
+    const cacheDir: string = this.context.cacheDir;
+    return path.startsWith(filesDir) || path.startsWith(cacheDir);
+  }
+
+  private ensureDir(fullPath: string): void {
+    if (fullPath.length === 0) return;
+
+    let target: string = fullPath;
+    while (target.length > 1 && target.endsWith('/')) {
+      target = target.substring(0, target.length - 1);
+    }
+
+    try {
+      fs.accessSync(target);
+      return;
+    } catch (_) { /* doesn't exist */ }
+
+    const toCreate: string[] = [target];
+    let current: string = target;
+
+    while (current.length > 1) {
+      const slash: number = current.lastIndexOf('/');
+      if (slash <= 0) break;
+      current = current.substring(0, slash);
+      try {
+        fs.accessSync(current);
+        break;
+      } catch (_) {
+        toCreate.push(current);
+      }
+    }
+
+    toCreate.reverse();
+    for (let i = 0; i < toCreate.length; i++) {
+      const dir: string = toCreate[i];
+      try {
+        fs.mkdirSync(dir);
+      } catch (e) {
+        const err: Error = e as Error;
+        if (err.message.indexOf('exist') >= 0
+          || err.message.indexOf('EEXIST') >= 0) {
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  private removeDirRecursive(dirPath: string): void {
+    try {
+      fs.accessSync(dirPath);
+    } catch (_) {
+      return;
+    }
+
+    let names: string[] = [];
+    try {
+      names = fs.listFileSync(dirPath);
+    } catch (_) {
+      return;
+    }
+
+    for (let i = 0; i < names.length; i++) {
+      const child: string = `${dirPath}/${names[i]}`;
+      let isDir: boolean = false;
+      try {
+        isDir = fs.statSync(child).isDirectory();
+      } catch (_) {
+        continue;
+      }
+      if (isDir) {
+        this.removeDirRecursive(child);
+      } else {
+        try { fs.unlinkSync(child); } catch (_) { /* ignore */ }
+      }
+    }
+
+    try { fs.rmdirSync(dirPath); } catch (_) { /* ignore */ }
   }
 
   // ===========================================================================
@@ -1645,14 +2818,12 @@ export class FileBrowserViewModel {
 
   onShowDetails(): void {
     if (this.selectedItem === null) return;
-    const itemId = this.selectedItem.id;
+    const itemId: string = this.selectedItem.id;
     this.selectedItem = null;
     router.pushUrl({
       url: Routes.ITEM_DETAILS,
       params: { accountId: this.activeAccountId, itemId: itemId }
-    }).catch((e: Error) => {
-      Logger.error(TAG, `pushUrl failed: ${e.message}`);
-    });
+    }).catch((e: Error) => { Logger.error(TAG, `pushUrl failed: ${e.message}`); });
   }
 
   // ===========================================================================
@@ -1664,13 +2835,63 @@ export class FileBrowserViewModel {
     return uri;
   }
 
-  static fileNameFromUri(uri: string): string {
-    let path = FileBrowserViewModel.uriToPath(uri);
+  static fileNameFromUri(uri: string | undefined | null): string {
+    if (uri === undefined || uri === null || uri.length === 0) return '';
+    let path: string = uri;
+    if (path.startsWith('file://')) {
+      path = path.substring('file://'.length);
+    }
     while (path.length > 0 && path.endsWith('/')) {
       path = path.substring(0, path.length - 1);
     }
-    const slash = path.lastIndexOf('/');
-    return slash >= 0 ? path.substring(slash + 1) : path;
+    const slash: number = path.lastIndexOf('/');
+    let name: string = slash >= 0 ? path.substring(slash + 1) : path;
+
+    try {
+      name = decodeURIComponent(name);
+    } catch (_) { /* keep as-is */ }
+    return name;
+  }
+
+  static basename(pathOrUri: string | undefined | null): string {
+    if (pathOrUri === undefined || pathOrUri === null || pathOrUri.length === 0) {
+      return 'unnamed';
+    }
+    let p: string = pathOrUri;
+    while (p.length > 0 && p.endsWith('/')) {
+      p = p.substring(0, p.length - 1);
+    }
+    const slash: number = p.lastIndexOf('/');
+    return slash >= 0 ? p.substring(slash + 1) : p;
+  }
+
+  static appendToUri(dirUri: string, fileName: string): string {
+    if (dirUri.endsWith('/')) return `${dirUri}${fileName}`;
+    return `${dirUri}/${fileName}`;
+  }
+
+  static findAvailableName(
+    originalName: string | undefined | null,
+    takenLowercase: string[]
+  ): string {
+    const safeName: string = (originalName !== undefined
+      && originalName !== null
+      && originalName.length > 0)
+      ? originalName
+      : `untitled_${Date.now()}`;
+
+    if (takenLowercase.indexOf(safeName.toLowerCase()) < 0) {
+      return safeName;
+    }
+
+    const parts: NameParts = FileBrowserViewModel.splitName(safeName);
+    for (let i = 1; i < 10000; i++) {
+      const candidate: string = `${parts.base} (${i})${parts.ext}`;
+      if (takenLowercase.indexOf(candidate.toLowerCase()) < 0) {
+        return candidate;
+      }
+    }
+    return `${parts.base} (${Date.now()})${parts.ext}`;
   }
 
   static walkDirectory(rootPath: string): WalkedFile[] {
@@ -1691,14 +2912,13 @@ export class FileBrowserViewModel {
       return;
     }
     for (let i = 0; i < names.length; i++) {
-      const name = names[i];
-      const full = `${currentPath}/${name}`;
-      const childRel = relative.length > 0 ? `${relative}/${name}` : name;
+      const name: string = names[i];
+      const full: string = `${currentPath}/${name}`;
+      const childRel: string = relative.length > 0 ? `${relative}/${name}` : name;
 
-      let isDir = false;
+      let isDir: boolean = false;
       try {
-        const stat = fs.statSync(full);
-        isDir = stat.isDirectory();
+        isDir = fs.statSync(full).isDirectory();
       } catch (_) {
         continue;
       }
@@ -1711,8 +2931,11 @@ export class FileBrowserViewModel {
     }
   }
 
-  static splitName(fileName: string): NameParts {
-    const dot = fileName.lastIndexOf('.');
+  static splitName(fileName: string | undefined | null): NameParts {
+    if (fileName === undefined || fileName === null || fileName.length === 0) {
+      return { base: '', ext: '' };
+    }
+    const dot: number = fileName.lastIndexOf('.');
     if (dot <= 0 || dot === fileName.length - 1) {
       return { base: fileName, ext: '' };
     }
@@ -1733,7 +2956,7 @@ export class FileBrowserViewModel {
 
   static formatDate(ms: number): string {
     const d = new Date(ms);
-    const months = [
+    const months: string[] = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
@@ -1741,7 +2964,7 @@ export class FileBrowserViewModel {
   }
 
   static initialOf(account: AccountInfo): string {
-    const name = account.displayName;
+    const name: string = account.displayName;
     if (name.length > 0) return name.charAt(0).toUpperCase();
     return '?';
   }

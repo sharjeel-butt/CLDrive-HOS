@@ -2,13 +2,13 @@
  * Convert a MIME type to a canonical file extension (without the dot).
  * Returns an empty string if the MIME type isn't recognized.
  */
-export function extensionFromMimeType(mimeType: string): string {
-  if (mimeType.length === 0) return '';
+export function extensionFromMimeType(mimeType: string | undefined | null): string {
+  if (mimeType === undefined || mimeType === null || mimeType.length === 0) {
+    return '';
+  }
   const mime = mimeType.toLowerCase();
 
-  // Google native formats — handled separately by the caller.
   if (mime.startsWith('application/vnd.google-apps.')) return '';
-
   if (mime === 'application/pdf') return 'pdf';
   if (mime === 'application/zip') return 'zip';
   if (mime === 'application/x-tar') return 'tar';
@@ -45,10 +45,13 @@ export function extensionFromMimeType(mimeType: string): string {
 }
 
 /**
- * Return true if the name already ends with a plausible file extension
- * (a dot followed by 1–5 alphanumeric characters).
+ * Return true if the name ends with a plausible file extension.
+ * Null-safe: returns false for undefined / null / empty inputs.
  */
-export function hasFileExtension(name: string): boolean {
+export function hasFileExtension(name: string | undefined | null): boolean {
+  if (name === undefined || name === null || name.length === 0) {
+    return false;
+  }
   const dot = name.lastIndexOf('.');
   if (dot <= 0 || dot === name.length - 1) return false;
   const ext = name.substring(dot + 1);
@@ -57,60 +60,59 @@ export function hasFileExtension(name: string): boolean {
 }
 
 /**
- * Ensure the file name carries an extension.
- *
- * Priority:
- *   1. If a `preferredExtension` is supplied (e.g. Google's `fileExtension`
- *      field), append it unless the name already ends with it.
- *   2. If the name already has an extension, keep it as-is.
- *   3. Otherwise derive the extension from the MIME type.
- *
- * Google native formats (Sheets, Docs, Slides, Drawings, Forms) have
- * well-known natural extensions that users expect to see, so those are
- * appended even though the files technically have no extension on Drive.
+ * Ensure the file name carries an extension. Null-safe: if `name` is
+ * missing entirely, returns an empty string rather than crashing.
  */
 export function ensureFileExtension(
-  name: string,
-  mimeType: string,
-  preferredExtension: string
+  name: string | undefined | null,
+  mimeType: string | undefined | null,
+  preferredExtension: string | undefined | null
 ): string {
-  const mime = mimeType.toLowerCase();
+  // Guard against a missing name — the callers will fall back to a
+  // placeholder when they see an empty result.
+  if (name === undefined || name === null || name.length === 0) {
+    return '';
+  }
+
+  const safeMime: string =
+    mimeType !== undefined && mimeType !== null ? mimeType.toLowerCase() : '';
+  const safeExt: string =
+    preferredExtension !== undefined && preferredExtension !== null
+      ? preferredExtension
+      : '';
 
   // Google native formats — give them a familiar extension.
-  if (mime === 'application/vnd.google-apps.document') {
+  if (safeMime === 'application/vnd.google-apps.document') {
     return appendIfMissing(name, 'docx');
   }
-  if (mime === 'application/vnd.google-apps.spreadsheet') {
+  if (safeMime === 'application/vnd.google-apps.spreadsheet') {
     return appendIfMissing(name, 'xlsx');
   }
-  if (mime === 'application/vnd.google-apps.presentation') {
+  if (safeMime === 'application/vnd.google-apps.presentation') {
     return appendIfMissing(name, 'pptx');
   }
-  if (mime === 'application/vnd.google-apps.drawing') {
+  if (safeMime === 'application/vnd.google-apps.drawing') {
     return appendIfMissing(name, 'png');
   }
-  if (mime === 'application/vnd.google-apps.form') {
+  if (safeMime === 'application/vnd.google-apps.form') {
     return appendIfMissing(name, 'zip');
   }
-  // Other Google-native types have no sensible extension.
-  if (mime.startsWith('application/vnd.google-apps.')) {
+  if (safeMime.startsWith('application/vnd.google-apps.')) {
     return name;
   }
 
-  // Prefer the extension the provider told us about.
-  if (preferredExtension.length > 0) {
-    if (name.toLowerCase().endsWith(`.${preferredExtension.toLowerCase()}`)) {
+  if (safeExt.length > 0) {
+    if (name.toLowerCase().endsWith(`.${safeExt.toLowerCase()}`)) {
       return name;
     }
     if (!hasFileExtension(name)) {
-      return `${name}.${preferredExtension}`;
+      return `${name}.${safeExt}`;
     }
     return name;
   }
 
-  // Fall back to MIME-derived extension.
   if (hasFileExtension(name)) return name;
-  const derived = extensionFromMimeType(mimeType);
+  const derived = extensionFromMimeType(safeMime);
   if (derived.length === 0) return name;
   return `${name}.${derived}`;
 }

@@ -1,7 +1,10 @@
 import { common } from '@kit.AbilityKit';
 import { router } from '@kit.ArkUI';
 import {
-  FileBrowserViewModel, ProviderGroup, Crumb
+  FileBrowserViewModel, ProviderGroup, Crumb,
+  ActivityGroup,
+  ACTIVITY_TAB_ALL, ACTIVITY_TAB_PENDING,
+  ACTIVITY_TAB_SUCCESS, ACTIVITY_TAB_FAILED
 } from '../viewmodels/FileBrowserViewModel';
 import { CloudProviderType } from '../core/models/CloudProviderType';
 import { CloudItem } from '../core/models/CloudItem';
@@ -10,7 +13,8 @@ import { AccountInfo } from '../core/models/AccountInfo';
 import {
   Operation, OperationType, OperationStatus, OperationItemKind,
   operationTypeIcon, operationTypeLabel, operationStatusLabel,
-  operationItemKindIcon, isActiveStatus
+  operationItemKindIcon, isActiveStatus,
+  canRetry
 } from '../core/models/Operation';
 import { OperationTracker } from '../core/services/OperationTracker';
 import { ThemeManager } from '../core/theme/ThemeManager';
@@ -19,15 +23,20 @@ import { ProviderIcon } from '../components/ProviderIcon';
 import { FileIcon } from '../components/FileIcon';
 import { Routes } from '../utils/RouteConstants';
 
+/**
+ * Retry support. Hidden for now — the underlying code in
+ * FileBrowserViewModel is preserved and functional. Flip to `true`
+ * to bring back both the per-row ↻ button and the Retry All action.
+ */
+const RETRY_ENABLED: boolean = false;
+
 @Entry
 @Component
 struct FileBrowserPage {
   @State vm: FileBrowserViewModel = new FileBrowserViewModel();
-
-  // ---- Theme ----
   @State private theme: ThemeColors = ThemeManager.get().colors();
 
-  // ---- Page-owned activity state ----
+  // ---- Page-owned task state ----
   @State private operations: Operation[] = [];
   @State private hasAnyOps: boolean = false;
   @State private canClearCompleted: boolean = false;
@@ -35,31 +44,52 @@ struct FileBrowserPage {
   @State private activeOpCount: number = 0;
   @State private hasFinishedOps: boolean = false;
 
+  // ---- Tab counts (primitive @State → guaranteed re-render) ----
+  @State private tabAllCount: number = 0;
+  @State private tabPendingCount: number = 0;
+  @State private tabSuccessCount: number = 0;
+  @State private tabFailedCount: number = 0;
+
   private crumbScroller: Scroller = new Scroller();
 
   private onOperationsChanged = (ops: Operation[]): void => {
     this.operations = ops;
+    this.vm.operations = ops;
 
-    let completed = false;
-    let finished = false;
-    let active = 0;
+    let all: number = 0;
+    let pending: number = 0;
+    let success: number = 0;
+    let failed: number = 0;
+    let anyCompleted: boolean = false;
+    let anyFinished: boolean = false;
 
     for (let i = 0; i < ops.length; i++) {
       const s: OperationStatus = ops[i].status;
-      if (s === OperationStatus.SUCCESS) completed = true;
-      if (s === OperationStatus.SUCCESS
-        || s === OperationStatus.FAILED
+      all++;
+
+      if (s === OperationStatus.QUEUED || s === OperationStatus.RUNNING) {
+        pending++;
+      } else if (s === OperationStatus.SUCCESS) {
+        success++;
+        anyCompleted = true;
+        anyFinished = true;
+      } else if (s === OperationStatus.FAILED
         || s === OperationStatus.CANCELLED) {
-        finished = true;
+        failed++;
+        anyFinished = true;
       }
-      if (s === OperationStatus.QUEUED || s === OperationStatus.RUNNING) active++;
     }
 
+    this.tabAllCount = all;
+    this.tabPendingCount = pending;
+    this.tabSuccessCount = success;
+    this.tabFailedCount = failed;
+
     this.hasAnyOps = ops.length > 0;
-    this.canClearCompleted = completed;
-    this.canClearAll = finished;
-    this.activeOpCount = active;
-    this.hasFinishedOps = finished;
+    this.canClearCompleted = anyCompleted;
+    this.canClearAll = anyFinished;
+    this.activeOpCount = pending;
+    this.hasFinishedOps = anyFinished;
   };
 
   private onThemeChanged = (): void => {
@@ -81,6 +111,50 @@ struct FileBrowserPage {
 
   onPageShow(): void {
     this.vm.onPageShow();
+  }
+
+  // ===========================================================================
+  // Task grouping (from page @State for real-time updates)
+  // ===========================================================================
+
+  private groupOpsByTab(tab: string): ActivityGroup[] {
+    const filtered: Operation[] = [];
+    for (let i = 0; i < this.operations.length; i++) {
+      const op: Operation = this.operations[i];
+      if (FileBrowserViewModel.operationMatchesTab(op, tab)) {
+        filtered.push(op);
+      }
+    }
+
+    const groups: ActivityGroup[] = [];
+    let currentLabel: string = '';
+    let currentList: Operation[] = [];
+
+    for (let i = 0; i < filtered.length; i++) {
+      const op: Operation = filtered[i];
+      const label: string = FileBrowserViewModel.dateLabel(op.startedAt);
+
+      if (label !== currentLabel) {
+        if (currentList.length > 0) {
+          groups.push({ dateLabel: currentLabel, operations: currentList });
+        }
+        currentLabel = label;
+        currentList = [op];
+      } else {
+        currentList.push(op);
+      }
+    }
+    if (currentList.length > 0) {
+      groups.push({ dateLabel: currentLabel, operations: currentList });
+    }
+    return groups;
+  }
+
+  private currentTabCount(): number {
+    if (this.vm.activityTab === ACTIVITY_TAB_ALL) return this.tabAllCount;
+    if (this.vm.activityTab === ACTIVITY_TAB_PENDING) return this.tabPendingCount;
+    if (this.vm.activityTab === ACTIVITY_TAB_SUCCESS) return this.tabSuccessCount;
+    return this.tabFailedCount;
   }
 
   // ===========================================================================
@@ -185,13 +259,13 @@ struct FileBrowserPage {
       }
 
       if (this.vm.showUploadMenu) {
-        Column() {
+        Stack({ alignContent: Alignment.BottomEnd }) {
           Column()
             .width('100%')
-            .layoutWeight(1)
-            .backgroundColor(this.theme.overlay)
+            .height('100%')
+            .backgroundColor('#33000000')
             .onClick(() => { this.vm.closeUploadMenu(); })
-          this.buildUploadMenu()
+          this.buildUploadPopover()
         }
         .width('100%')
         .height('100%')
@@ -215,10 +289,8 @@ struct FileBrowserPage {
     Column() {
       Row({ space: 10 }) {
         Text('☰')
-          .fontSize(22)
-          .fontColor(this.theme.primary)
-          .width(24)
-          .textAlign(TextAlign.Center)
+          .fontSize(22).fontColor(this.theme.primary)
+          .width(24).textAlign(TextAlign.Center)
           .onClick(() => { this.vm.openSidebar(); })
 
         ProviderIcon({
@@ -232,35 +304,25 @@ struct FileBrowserPage {
           Text(this.vm.activeAccount !== null
             ? this.vm.activeAccount.displayName
             : 'Files')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.theme.textPrimary)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .textAlign(TextAlign.Start)
-            .width('100%')
+            .fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+            .textAlign(TextAlign.Start).width('100%')
 
           if (this.vm.activeAccount !== null
             && this.vm.activeAccount.email !== undefined
             && this.vm.activeAccount.email.length > 0) {
             Text(this.vm.activeAccount.email)
-              .fontSize(12)
-              .fontColor(this.theme.textSecondary)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .textAlign(TextAlign.Start)
-              .width('100%')
+              .fontSize(12).fontColor(this.theme.textSecondary)
+              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+              .textAlign(TextAlign.Start).width('100%')
           } else {
             Text(FileBrowserViewModel.providerLabel(
               this.vm.activeAccount !== null
                 ? this.vm.activeAccount.provider
                 : CloudProviderType.ONEDRIVE
             ))
-              .fontSize(12)
-              .fontColor(this.theme.textSecondary)
-              .maxLines(1)
-              .textAlign(TextAlign.Start)
-              .width('100%')
+              .fontSize(12).fontColor(this.theme.textSecondary)
+              .maxLines(1).textAlign(TextAlign.Start).width('100%')
           }
         }
         .alignItems(HorizontalAlign.Start)
@@ -270,16 +332,12 @@ struct FileBrowserPage {
 
         if (this.vm.canGoBack()) {
           Button('‹')
-            .fontSize(22)
-            .backgroundColor(Color.Transparent)
-            .fontColor(this.theme.primary)
-            .padding(0)
-            .width(28)
+            .fontSize(22).backgroundColor(Color.Transparent).fontColor(this.theme.primary)
+            .padding(0).width(28)
             .onClick(() => { this.vm.goBack(); })
         }
       }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
+      .width('100%').alignItems(VerticalAlign.Center)
 
       if (this.vm.crumbs.length > 1) {
         Row() {
@@ -291,16 +349,12 @@ struct FileBrowserPage {
                   Text(crumb.name)
                     .fontSize(12)
                     .fontWeight(index === this.vm.crumbs.length - 1
-                      ? FontWeight.Medium
-                      : FontWeight.Normal)
+                      ? FontWeight.Medium : FontWeight.Normal)
                     .fontColor(index === this.vm.crumbs.length - 1
-                      ? this.theme.textPrimary
-                      : this.theme.primary)
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      ? this.theme.textPrimary : this.theme.primary)
+                    .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                     .textAlign(TextAlign.Start)
                     .onClick(() => { this.vm.goToCrumb(index); })
-
                   if (index < this.vm.crumbs.length - 1) {
                     Text('››').fontSize(11).fontColor(this.theme.textTertiary)
                   }
@@ -309,54 +363,81 @@ struct FileBrowserPage {
             }
             .height(22)
           }
-          .scrollable(ScrollDirection.Horizontal)
-          .scrollBar(BarState.Off)
-          .align(Alignment.Start)
-          .layoutWeight(1)
+          .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+          .align(Alignment.Start).layoutWeight(1)
         }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
-        .margin({ top: 4 })
+        .width('100%').alignItems(VerticalAlign.Center).margin({ top: 4 })
       }
     }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
+    .width('100%').alignItems(HorizontalAlign.Start)
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
     .backgroundColor(this.theme.surface)
   }
+
+  // ---------------------------------------------------------------------------
+  // Activity button — icon color reflects current task state
+  //
+  //   Blue    : at least one task is running or queued
+  //   Grey    : no tasks in the history
+  //   Green   : every finished task succeeded
+  //   Yellow  : mixed successes and failures
+  //   Red     : every finished task failed
+  // ---------------------------------------------------------------------------
 
   @Builder
   buildActivityButton() {
     Stack({ alignContent: Alignment.TopEnd }) {
       Text('⟳')
         .fontSize(22)
-        .fontColor(this.hasAnyOps ? this.theme.primary : this.theme.textTertiary)
+        .fontColor(this.activityStateColor())
         .width(36)
         .height(36)
         .textAlign(TextAlign.Center)
 
       if (this.activeOpCount > 0) {
+        // Red badge with the number of pending tasks.
         Text(`${this.activeOpCount}`)
-          .fontSize(10)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#FFFFFF')
-          .backgroundColor(this.theme.error)
-          .borderRadius(9)
+          .fontSize(10).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
+          .backgroundColor(this.theme.error).borderRadius(9)
           .padding({ left: 5, right: 5, top: 1, bottom: 1 })
           .constraintSize({ minWidth: 18, minHeight: 18 })
           .textAlign(TextAlign.Center)
-      } else if (this.hasFinishedOps) {
+      } else if (this.hasAnyOps) {
+        // Quiet dot colored to match the finished-task state.
         Text(' ')
-          .width(8)
-          .height(8)
-          .borderRadius(4)
-          .backgroundColor(this.theme.primary)
+          .width(8).height(8).borderRadius(4)
+          .backgroundColor(this.activityStateColor())
           .margin({ top: 2, right: 4 })
       }
     }
-    .width(36)
-    .height(36)
+    .width(36).height(36)
     .onClick(() => { this.vm.openActivityPanel(); })
+  }
+
+  private activityStateColor(): string {
+    // Active work in progress → blue.
+    if (this.activeOpCount > 0) {
+      return this.theme.primary;
+    }
+
+    // Nothing in history → grey.
+    if (this.operations.length === 0) {
+      return this.theme.textTertiary;
+    }
+
+    // Everything is finished. Look at the mix.
+    if (this.tabFailedCount === 0 && this.tabSuccessCount > 0) {
+      return this.theme.success;   // all succeeded
+    }
+    if (this.tabSuccessCount === 0 && this.tabFailedCount > 0) {
+      return this.theme.error;     // all failed
+    }
+    if (this.tabSuccessCount > 0 && this.tabFailedCount > 0) {
+      return this.theme.warning;   // mixed
+    }
+
+    // Fallback — should not normally reach here.
+    return this.theme.textTertiary;
   }
 
   // ===========================================================================
@@ -367,29 +448,21 @@ struct FileBrowserPage {
   buildSelectionTopBar() {
     Row({ space: 12 }) {
       Text('✕')
-        .fontSize(20)
-        .fontColor(this.theme.textPrimary)
-        .width(32)
-        .textAlign(TextAlign.Center)
+        .fontSize(20).fontColor(this.theme.textPrimary)
+        .width(32).textAlign(TextAlign.Center)
         .onClick(() => { this.vm.exitSelectionMode(); })
 
       Text(`${this.vm.selectedCount()} selected`)
-        .fontSize(16)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.theme.textPrimary)
+        .fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
         .layoutWeight(1)
 
       if (this.vm.allSelected()) {
         Button('Deselect all')
-          .fontSize(13)
-          .backgroundColor(Color.Transparent)
-          .fontColor(this.theme.primary)
+          .fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.primary)
           .onClick(() => { this.vm.deselectAll(); })
       } else {
         Button('Select all')
-          .fontSize(13)
-          .backgroundColor(Color.Transparent)
-          .fontColor(this.theme.primary)
+          .fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.primary)
           .onClick(() => { this.vm.selectAll(); })
       }
     }
@@ -406,9 +479,18 @@ struct FileBrowserPage {
   @Builder
   buildSelectionActionBar() {
     Row() {
-      this.buildSelectionAction('🗑', 'Delete', (): void => { this.vm.onBatchDelete(); })
-      this.buildSelectionAction('→', 'Move', (): void => { this.vm.onBatchMove(); })
-      this.buildSelectionAction('⧉', 'Copy', (): void => { this.vm.onBatchCopy(); })
+      this.buildSelectionAction('⧉', 'Copy', (): void => {
+        this.vm.onBatchCopy();
+      })
+      this.buildSelectionAction('→', 'Move', (): void => {
+        this.vm.onBatchMove();
+      })
+      this.buildSelectionAction('⬇', 'Download', (): void => {
+        this.vm.onBatchDownload();
+      })
+      this.buildSelectionAction('🗑', 'Delete', (): void => {
+        this.vm.onBatchDelete();
+      })
     }
     .width('100%')
     .padding({ top: 10, bottom: 16 })
@@ -422,8 +504,7 @@ struct FileBrowserPage {
       Text(icon).fontSize(22).fontColor(this.theme.primary)
       Text(label).fontSize(12).fontColor(this.theme.primary)
     }
-    .layoutWeight(1)
-    .alignItems(HorizontalAlign.Center)
+    .layoutWeight(1).alignItems(HorizontalAlign.Center)
     .onClick(action)
   }
 
@@ -437,12 +518,9 @@ struct FileBrowserPage {
       Row({ space: 10 }) {
         Text('🔍').fontSize(16).fontColor(this.theme.primary)
         Text('Search your files')
-          .fontSize(14)
-          .fontColor(this.theme.textPrimary)
-          .layoutWeight(1)
+          .fontSize(14).fontColor(this.theme.textPrimary).layoutWeight(1)
       }
-      .layoutWeight(1)
-      .height(48)
+      .layoutWeight(1).height(48)
       .padding({ left: 18, right: 18 })
       .backgroundColor(this.theme.isDark ? '#1AFFFFFF' : '#1A000000')
       .backgroundEffect({
@@ -460,18 +538,14 @@ struct FileBrowserPage {
       .shadow({
         radius: 10,
         color: this.theme.isDark ? '#33000000' : '#12000000',
-        offsetX: 0,
-        offsetY: 4
+        offsetX: 0, offsetY: 4
       })
       .alignItems(VerticalAlign.Center)
       .onClick(() => { this.vm.openSearch(); })
 
       Text('+')
-        .fontSize(32)
-        .fontColor('#FFFFFF')
-        .width(56)
-        .height(56)
-        .borderRadius(28)
+        .fontSize(32).fontColor('#FFFFFF')
+        .width(56).height(56).borderRadius(28)
         .backgroundColor(this.theme.primary)
         .textAlign(TextAlign.Center)
         .border({
@@ -482,8 +556,7 @@ struct FileBrowserPage {
         .shadow({
           radius: 8,
           color: this.theme.isDark ? '#40000000' : '#260A5BD3',
-          offsetX: 0,
-          offsetY: 5
+          offsetX: 0, offsetY: 5
         })
         .onClick(() => { this.vm.openUploadMenu(); })
     }
@@ -493,47 +566,46 @@ struct FileBrowserPage {
   }
 
   // ===========================================================================
-  // Upload menu
+  // Upload popover
   // ===========================================================================
 
   @Builder
-  buildUploadMenu() {
+  buildUploadPopover() {
     Column() {
-      Row()
-        .width(40).height(4).borderRadius(2).backgroundColor(this.theme.border)
-        .margin({ top: 8, bottom: 12 })
-
-      Text('Upload')
-        .fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
-        .width('100%').padding({ left: 20, bottom: 12 })
-        .textAlign(TextAlign.Start)
-
-      Divider().color(this.theme.divider)
-
-      Row({ space: 16 }) {
-        Text('📄').fontSize(24).width(32).textAlign(TextAlign.Center)
-        Text('Upload file').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
-        Text('›').fontSize(20).fontColor(this.theme.textTertiary)
+      Row({ space: 14 }) {
+        Text('📁').fontSize(20).width(24).textAlign(TextAlign.Center)
+        Text('New folder')
+          .fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
       }
-      .width('100%').padding({ left: 20, right: 20, top: 16, bottom: 16 })
+      .width('100%')
+      .padding({ left: 18, right: 18, top: 16, bottom: 16 })
+      .onClick(() => { this.vm.openNewFolderPrompt(); })
+
+      Row({ space: 14 }) {
+        Text('📄').fontSize(20).width(24).textAlign(TextAlign.Center)
+        Text('Upload file')
+          .fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ left: 18, right: 18, top: 16, bottom: 16 })
       .onClick(() => { this.vm.onUploadFile(); })
 
-      Divider().color(this.theme.divider).margin({ left: 68 })
-
-      Row({ space: 16 }) {
-        Text('📁').fontSize(24).width(32).textAlign(TextAlign.Center)
-        Text('Upload folder').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
-        Text('›').fontSize(20).fontColor(this.theme.textTertiary)
+      if (this.vm.isUploadFolderEnabled()) {
+        Row({ space: 14 }) {
+          Text('📂').fontSize(20).width(24).textAlign(TextAlign.Center)
+          Text('Upload folder')
+            .fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ left: 18, right: 18, top: 16, bottom: 16 })
+        .onClick(() => { this.vm.onUploadFolder(); })
       }
-      .width('100%').padding({ left: 20, right: 20, top: 16, bottom: 16 })
-      .onClick(() => { this.vm.onUploadFolder(); })
-
-      Row().height(24)
     }
-    .width('100%')
+    .width(220)
     .backgroundColor(this.theme.surface)
-    .borderRadius({ topLeft: 20, topRight: 20 })
-    .shadow({ radius: 20, color: '#22000000', offsetX: 0, offsetY: -4 })
+    .borderRadius(18)
+    .shadow({ radius: 24, color: '#33000000', offsetX: 0, offsetY: 6 })
+    .margin({ right: 16, bottom: 96 })
   }
 
   // ===========================================================================
@@ -545,8 +617,7 @@ struct FileBrowserPage {
     Column() {
       Row({ space: 8 }) {
         Text('←')
-          .fontSize(22)
-          .fontColor(this.theme.textPrimary)
+          .fontSize(22).fontColor(this.theme.textPrimary)
           .width(36).textAlign(TextAlign.Center)
           .onClick(() => { this.vm.closeSearch(); })
 
@@ -583,8 +654,7 @@ struct FileBrowserPage {
             .fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
           Text(this.vm.searchError)
             .fontSize(13).fontColor(this.theme.textSecondary)
-            .textAlign(TextAlign.Center)
-            .padding({ left: 32, right: 32 })
+            .textAlign(TextAlign.Center).padding({ left: 32, right: 32 })
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
       } else if (this.vm.searchQuery.trim().length === 0) {
@@ -592,10 +662,9 @@ struct FileBrowserPage {
           Text('🔍').fontSize(42).fontColor(this.theme.textTertiary)
           Text('Start typing to search')
             .fontSize(14).fontColor(this.theme.textSecondary)
-          Text('Search across all files in your OneDrive.')
+          Text('Search across all files in your drive.')
             .fontSize(12).fontColor(this.theme.textTertiary)
-            .textAlign(TextAlign.Center)
-            .padding({ left: 32, right: 32 })
+            .textAlign(TextAlign.Center).padding({ left: 32, right: 32 })
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
       } else if (this.vm.searchResults.length === 0) {
@@ -703,8 +772,7 @@ struct FileBrowserPage {
         Text(this.vm.isSelected(item.id) ? '☑' : '☐')
           .fontSize(22)
           .fontColor(this.vm.isSelected(item.id)
-            ? this.theme.primary
-            : this.theme.textTertiary)
+            ? this.theme.primary : this.theme.textTertiary)
           .width(24).textAlign(TextAlign.Center)
 
         if (item.type === CloudItemType.FOLDER) {
@@ -740,6 +808,12 @@ struct FileBrowserPage {
       }
       .alignItems(HorizontalAlign.Start).layoutWeight(1)
 
+      if (!this.vm.isSelectionMode
+        && item.type === CloudItemType.FILE
+        && this.vm.isOffline(item.id)) {
+        Text('☁').fontSize(14).fontColor(this.theme.primary).margin({ right: 4 })
+      }
+
       if (!this.vm.isSelectionMode) {
         Text('⋮')
           .fontSize(22).fontColor(this.theme.textSecondary)
@@ -751,19 +825,19 @@ struct FileBrowserPage {
     .padding({
       left: this.vm.isSelectionMode ? 8 : 16,
       right: 8,
-      top: 12,
-      bottom: 12
+      top: 12, bottom: 12
     })
     .backgroundColor(
       this.vm.isSelectionMode && this.vm.isSelected(item.id)
-        ? this.theme.chipSelectedBg
-        : this.theme.surface
+        ? this.theme.chipSelectedBg : this.theme.surface
     )
     .onClick(() => {
       if (this.vm.isSelectionMode) {
         this.vm.toggleSelection(item.id);
       } else if (item.type === CloudItemType.FOLDER) {
         this.vm.openFolder(item);
+      } else if (this.vm.isOffline(item.id)) {
+        this.vm.openOfflineFile(item);
       }
     })
     .gesture(
@@ -791,6 +865,10 @@ struct FileBrowserPage {
       this.buildDeleteButton()
 
       Column() {
+        if (this.vm.selectedItem !== null
+          && this.vm.isOffline(this.vm.selectedItem.id)) {
+          this.buildOpenRow()
+        }
         this.buildDownloadRow()
         this.buildOfflineRow()
         this.buildRenameRow()
@@ -818,10 +896,8 @@ struct FileBrowserPage {
         FileIcon({
           fileName: this.vm.selectedItem.name,
           mimeType: this.vm.selectedItem.mimeType !== undefined
-            ? this.vm.selectedItem.mimeType
-            : '',
-          badgeSize: 72,
-          rounded: true
+            ? this.vm.selectedItem.mimeType : '',
+          badgeSize: 72, rounded: true
         })
       }
 
@@ -852,12 +928,29 @@ struct FileBrowserPage {
         Text('Delete').fontSize(14).fontColor(this.theme.error)
       }
       .width('100%').padding({ top: 20, bottom: 20 })
-      .backgroundColor(this.theme.surfaceSubtle)
-      .borderRadius(12)
+      .backgroundColor(this.theme.surfaceSubtle).borderRadius(12)
       .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
     }
     .width('100%').padding({ left: 16, right: 16 })
     .onClick(() => { this.vm.onDeleteItem(); })
+  }
+
+  @Builder
+  buildOpenRow() {
+    Row({ space: 16 }) {
+      Text('📂').fontSize(22).fontColor(this.theme.textSecondary)
+        .width(28).textAlign(TextAlign.Center)
+      Text('Open').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+    }
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .onClick(() => {
+      if (this.vm.selectedItem !== null) {
+        const item = this.vm.selectedItem;
+        this.vm.closeActionsSheet();
+        this.vm.openOfflineFile(item);
+      }
+    })
   }
 
   @Builder
@@ -876,11 +969,11 @@ struct FileBrowserPage {
         ? 'Downloading...' : 'Download')
         .fontSize(16)
         .fontColor(this.vm.canDownloadSelected()
-          ? this.theme.textPrimary
-          : this.theme.textTertiary)
+          ? this.theme.textPrimary : this.theme.textTertiary)
         .layoutWeight(1)
     }
-    .width('100%').padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
     .onClick(() => { this.vm.onDownloadItem(); })
   }
 
@@ -891,15 +984,23 @@ struct FileBrowserPage {
         .width(28).textAlign(TextAlign.Center)
       Text('Make available offline').fontSize(16).fontColor(this.theme.textPrimary)
         .layoutWeight(1)
+
       Toggle({
         type: ToggleType.Switch,
         isOn: this.vm.selectedItem !== null
           && this.vm.isOffline(this.vm.selectedItem.id)
       })
         .selectedColor(this.theme.primary)
-        .onChange((isOn: boolean) => { this.vm.onToggleOffline(isOn); })
+        .onChange((isOn: boolean) => {
+          if (this.vm.selectedItem === null) return;
+          const currentlyOffline: boolean =
+            this.vm.isOffline(this.vm.selectedItem.id);
+          if (isOn === currentlyOffline) return;
+          this.vm.onToggleOffline(isOn);
+        })
     }
-    .width('100%').padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
   }
 
   @Builder
@@ -909,7 +1010,8 @@ struct FileBrowserPage {
         .width(28).textAlign(TextAlign.Center)
       Text('Rename').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
-    .width('100%').padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
     .onClick(() => { this.vm.onRenameItem(); })
   }
 
@@ -920,7 +1022,8 @@ struct FileBrowserPage {
         .width(28).textAlign(TextAlign.Center)
       Text('Move').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
-    .width('100%').padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
     .onClick(() => { this.vm.onMoveItem(); })
   }
 
@@ -931,7 +1034,8 @@ struct FileBrowserPage {
         .width(28).textAlign(TextAlign.Center)
       Text('Copy').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
-    .width('100%').padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
     .onClick(() => { this.vm.onCopyItem(); })
   }
 
@@ -942,7 +1046,8 @@ struct FileBrowserPage {
         .width(28).textAlign(TextAlign.Center)
       Text('Details').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
-    .width('100%').padding({ left: 24, right: 24, top: 14, bottom: 14 })
+    .width('100%')
+    .padding({ left: 24, right: 24, top: 14, bottom: 14 })
     .onClick(() => { this.vm.onShowDetails(); })
   }
 
@@ -953,8 +1058,8 @@ struct FileBrowserPage {
   @Builder
   buildRenameDialog() {
     Column({ space: 16 }) {
-      Text('Rename').fontSize(18).fontWeight(FontWeight.Bold)
-        .fontColor(this.theme.textPrimary)
+      Text('Rename')
+        .fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
         .width('100%').textAlign(TextAlign.Start)
 
       TextInput({ text: this.vm.renameText, placeholder: 'New name' })
@@ -970,6 +1075,7 @@ struct FileBrowserPage {
           .backgroundColor(this.theme.chipBg)
           .fontColor(this.theme.textPrimary)
           .onClick(() => { this.vm.cancelRename(); })
+
         Button(this.vm.isProcessing ? 'Renaming...' : 'Rename')
           .layoutWeight(1)
           .backgroundColor(this.theme.primary)
@@ -980,8 +1086,7 @@ struct FileBrowserPage {
       .width('100%')
     }
     .width('85%').padding(20)
-    .backgroundColor(this.theme.surface)
-    .borderRadius(16)
+    .backgroundColor(this.theme.surface).borderRadius(16)
   }
 
   // ===========================================================================
@@ -1023,8 +1128,7 @@ struct FileBrowserPage {
                   .fontWeight(index === this.vm.movePickerCrumbs.length - 1
                     ? FontWeight.Medium : FontWeight.Normal)
                   .fontColor(index === this.vm.movePickerCrumbs.length - 1
-                    ? this.theme.textPrimary
-                    : this.theme.primary)
+                    ? this.theme.textPrimary : this.theme.primary)
                   .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                   .textAlign(TextAlign.Start)
                   .onClick(() => { this.vm.movePickerGoToCrumb(index); })
@@ -1099,11 +1203,11 @@ struct FileBrowserPage {
           .backgroundColor(this.theme.chipBg)
           .fontColor(this.theme.textPrimary)
           .onClick(() => { this.vm.closeMovePicker(); })
+
         Button(this.vm.pickerConfirmLabel())
           .layoutWeight(1)
           .backgroundColor(this.vm.canConfirmHere()
-            ? this.theme.primary
-            : this.theme.border)
+            ? this.theme.primary : this.theme.border)
           .fontColor(this.theme.primaryContrast)
           .enabled(this.vm.canConfirmHere())
           .onClick(() => { this.vm.performPickerConfirm(); })
@@ -1126,22 +1230,26 @@ struct FileBrowserPage {
       Text('New folder')
         .fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
         .width('100%').textAlign(TextAlign.Start)
+
       Text(`Will be created inside: ${this.currentPickerFolderName()}`)
         .fontSize(12).fontColor(this.theme.textSecondary)
         .width('100%').textAlign(TextAlign.Start)
         .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+
       TextInput({ text: this.vm.newFolderName, placeholder: 'Folder name' })
         .fontSize(15)
         .fontColor(this.theme.textPrimary)
         .placeholderColor(this.theme.textTertiary)
         .backgroundColor(this.theme.chipBg)
         .onChange((value: string) => { this.vm.newFolderName = value; })
+
       Row({ space: 12 }) {
         Button('Cancel')
           .layoutWeight(1)
           .backgroundColor(this.theme.chipBg)
           .fontColor(this.theme.textPrimary)
           .onClick(() => { this.vm.cancelCreateFolder(); })
+
         Button(this.vm.isCreatingFolder ? 'Creating...' : 'Create')
           .layoutWeight(1)
           .backgroundColor(this.theme.primary)
@@ -1152,88 +1260,152 @@ struct FileBrowserPage {
       .width('100%')
     }
     .width('85%').padding(20)
-    .backgroundColor(this.theme.surface)
-    .borderRadius(16)
+    .backgroundColor(this.theme.surface).borderRadius(16)
   }
 
   private currentPickerFolderName(): string {
-    const crumbs: Crumb[] = this.vm.movePickerCrumbs;
-    if (crumbs.length === 0) return 'Root';
-    return crumbs[crumbs.length - 1].name;
+    if (this.vm.createFolderTargetId === this.vm.currentFolderId) {
+      const crumbs: Crumb[] = this.vm.crumbs;
+      if (crumbs.length > 0) return crumbs[crumbs.length - 1].name;
+    }
+    const pickerCrumbs: Crumb[] = this.vm.movePickerCrumbs;
+    if (pickerCrumbs.length === 0) return 'Root';
+    return pickerCrumbs[pickerCrumbs.length - 1].name;
   }
 
   // ===========================================================================
-  // Activity panel
+  // Tasks panel
   // ===========================================================================
 
   @Builder
   buildActivityPanel() {
     Column() {
       Row()
-        .width(40).height(4).borderRadius(2).backgroundColor(this.theme.border)
+        .width(40).height(4).borderRadius(2)
+        .backgroundColor(this.theme.border)
         .margin({ top: 8, bottom: 12 })
 
       Row() {
-        Text('Activity')
-          .fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
-          .layoutWeight(1)
+        Column({ space: 2 }) {
+          Text('Tasks')
+            .fontSize(18).fontWeight(FontWeight.Bold)
+            .fontColor(this.theme.textPrimary)
+            .textAlign(TextAlign.Start).width('100%')
+
+          Text('Recent 500 tasks')
+            .fontSize(11).fontColor(this.theme.textTertiary)
+            .textAlign(TextAlign.Start).width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
         Text('✕')
           .fontSize(18).fontColor(this.theme.textSecondary)
           .width(32).height(32).textAlign(TextAlign.Center)
           .onClick(() => { this.vm.closeActivityPanel(); })
       }
-      .width('100%').padding({ left: 20, right: 12, bottom: 12 })
+      .width('100%')
+      .padding({ left: 20, right: 12, bottom: 12 })
       .alignItems(VerticalAlign.Center)
+
+      this.buildActivityTabs()
 
       Divider().color(this.theme.divider)
 
-      if (this.operations.length === 0) {
-        Column({ space: 10 }) {
-          Text('✓').fontSize(42).fontColor(this.theme.textTertiary)
-          Text('No recent activity')
-            .fontSize(14).fontColor(this.theme.textSecondary)
-        }
-        .width('100%').height(200).justifyContent(FlexAlign.Center)
+      if (this.currentTabCount() === 0) {
+        this.buildActivityEmptyState()
       } else {
-        List({ space: 1 }) {
-          ForEach(this.operations, (op: Operation) => {
-            ListItem() { this.buildActivityRow(op) }
-          }, (op: Operation) =>
-          `${op.id}_${op.status}_${op.progress}_${op.batchIndex}_${op.errorMessage}`)
-        }
-        .width('100%').constraintSize({ maxHeight: 420 })
-        .divider({ strokeWidth: 1, color: this.theme.divider })
+        this.buildActivityGroups()
+      }
+
+      // ---- Retry All — only in the Failed tab when there are failures ----
+      // ---- Retry All — only in the Failed tab when there are failures ----
+      if (RETRY_ENABLED
+        && this.vm.activityTab === ACTIVITY_TAB_FAILED
+        && this.tabFailedCount > 0) {
+        Divider().color(this.theme.divider)
+        Button(`Retry All (${this.tabFailedCount})`)
+          .fontSize(13)
+          .fontWeight(FontWeight.Medium)
+          .backgroundColor(this.theme.primary)
+          .fontColor(this.theme.primaryContrast)
+          .width('100%')
+          .padding({ top: 10, bottom: 10 })
+          .margin({ left: 16, right: 16, top: 12 })
+          .onClick(() => {
+            this.vm.retryAllFailed();
+          })
       }
 
       if (this.hasAnyOps) {
         Divider().color(this.theme.divider)
         Row({ space: 6 }) {
-          Button('Clear completed')
-            .fontSize(11)
-            .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-            .backgroundColor(this.theme.chipBg)
-            .fontColor(this.canClearCompleted
-              ? this.theme.textPrimary : this.theme.textTertiary)
-            .enabled(this.canClearCompleted)
-            .onClick(() => { this.vm.clearCompletedOperations(); })
+          // ---- Clear completed ----
+          Row({ space: 4 }) {
+            Text('✓')
+              .fontSize(12)
+              .fontColor(this.canClearCompleted
+                ? this.theme.textPrimary : this.theme.textTertiary)
+            Text('Clear completed')
+              .fontSize(11)
+              .fontColor(this.canClearCompleted
+                ? this.theme.textPrimary : this.theme.textTertiary)
+          }
+          .height(32)
+          .padding({ left: 10, right: 10 })
+          .backgroundColor(this.theme.chipBg)
+          .borderRadius(16)
+          .alignItems(VerticalAlign.Center)
+          .opacity(this.canClearCompleted ? 1.0 : 0.5)
+          .onClick(() => {
+            if (this.canClearCompleted) {
+              this.vm.clearCompletedOperations();
+            }
+          })
 
-          Button('Clear all')
-            .fontSize(11)
-            .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-            .backgroundColor(this.theme.chipBg)
-            .fontColor(this.canClearAll
-              ? this.theme.textPrimary : this.theme.textTertiary)
-            .enabled(this.canClearAll)
-            .onClick(() => { this.vm.clearFinishedOperations(); })
+          // ---- Clear all ----
+          Row({ space: 4 }) {
+            Text('🗑')
+              .fontSize(12)
+              .fontColor(this.canClearAll
+                ? this.theme.textPrimary : this.theme.textTertiary)
+            Text('Clear all')
+              .fontSize(11)
+              .fontColor(this.canClearAll
+                ? this.theme.textPrimary : this.theme.textTertiary)
+          }
+          .height(32)
+          .padding({ left: 10, right: 10 })
+          .backgroundColor(this.theme.chipBg)
+          .borderRadius(16)
+          .alignItems(VerticalAlign.Center)
+          .opacity(this.canClearAll ? 1.0 : 0.5)
+          .onClick(() => {
+            if (this.canClearAll) {
+              this.vm.clearFinishedOperations();
+            }
+          })
 
-          Button('Force clear')
-            .fontSize(11)
-            .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-            .backgroundColor(this.theme.errorSoft)
-            .fontColor(this.theme.error)
-            .onClick(() => { this.vm.forceClearAllOperations(); })
+          // ---- Force clear ----
+          Row({ space: 4 }) {
+            Text('⚠')
+              .fontSize(12)
+              .fontColor(this.theme.error)
+            Text('Force clear')
+              .fontSize(11)
+              .fontColor(this.theme.error)
+          }
+          .height(32)
+          .padding({ left: 10, right: 10 })
+          .backgroundColor(this.theme.errorSoft)
+          .borderRadius(16)
+          .alignItems(VerticalAlign.Center)
+          .onClick(() => {
+            this.vm.forceClearAllOperations();
+          })
         }
-        .width('100%').justifyContent(FlexAlign.SpaceBetween)
+        .width('100%')
+        .justifyContent(FlexAlign.SpaceBetween)
         .padding({ left: 16, right: 16, top: 12, bottom: 20 })
       } else {
         Row().height(24)
@@ -1243,6 +1415,240 @@ struct FileBrowserPage {
     .backgroundColor(this.theme.surface)
     .borderRadius({ topLeft: 20, topRight: 20 })
     .shadow({ radius: 20, color: '#22000000', offsetX: 0, offsetY: -4 })
+  }
+
+  @Builder
+  buildActivityTabs() {
+    Row({ space: 6 }) {
+      this.buildTabAll()
+      this.buildTabPending()
+      this.buildTabSuccess()
+      this.buildTabFailed()
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, bottom: 12 })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tab pills — each reads its @State count directly so ArkUI re-renders
+  // the pill the instant the count changes.
+  // ---------------------------------------------------------------------------
+
+  @Builder
+  buildTabAll() {
+    Row({ space: 4 }) {
+      Text('All')
+        .fontSize(12)
+        .fontWeight(this.vm.activityTab === ACTIVITY_TAB_ALL
+          ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_ALL
+          ? this.theme.primaryContrast : this.theme.textSecondary)
+
+      Text(`${this.tabAllCount}`)
+        .fontSize(10)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_ALL
+          ? this.theme.primaryContrast : this.theme.textTertiary)
+        .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_ALL
+          ? '#33FFFFFF' : this.theme.chipBg)
+        .borderRadius(8)
+        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+        .constraintSize({ minWidth: 14 })
+        .textAlign(TextAlign.Center)
+    }
+    .height(30)
+    .padding({ left: 10, right: 8 })
+    .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_ALL
+      ? this.theme.primary : this.theme.chipBg)
+    .borderRadius(15)
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => { this.vm.setActivityTab(ACTIVITY_TAB_ALL); })
+  }
+
+  @Builder
+  buildTabPending() {
+    Row({ space: 4 }) {
+      Text('Pending')
+        .fontSize(12)
+        .fontWeight(this.vm.activityTab === ACTIVITY_TAB_PENDING
+          ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_PENDING
+          ? this.theme.primaryContrast : this.theme.textSecondary)
+
+      Text(`${this.tabPendingCount}`)
+        .fontSize(10)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_PENDING
+          ? this.theme.primaryContrast : this.theme.textTertiary)
+        .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_PENDING
+          ? '#33FFFFFF' : this.theme.chipBg)
+        .borderRadius(8)
+        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+        .constraintSize({ minWidth: 14 })
+        .textAlign(TextAlign.Center)
+    }
+    .height(30)
+    .padding({ left: 10, right: 8 })
+    .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_PENDING
+      ? this.theme.primary : this.theme.chipBg)
+    .borderRadius(15)
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => { this.vm.setActivityTab(ACTIVITY_TAB_PENDING); })
+  }
+
+  @Builder
+  buildTabSuccess() {
+    Row({ space: 4 }) {
+      Text('Done')
+        .fontSize(12)
+        .fontWeight(this.vm.activityTab === ACTIVITY_TAB_SUCCESS
+          ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_SUCCESS
+          ? this.theme.primaryContrast : this.theme.textSecondary)
+
+      Text(`${this.tabSuccessCount}`)
+        .fontSize(10)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_SUCCESS
+          ? this.theme.primaryContrast : this.theme.textTertiary)
+        .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_SUCCESS
+          ? '#33FFFFFF' : this.theme.chipBg)
+        .borderRadius(8)
+        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+        .constraintSize({ minWidth: 14 })
+        .textAlign(TextAlign.Center)
+    }
+    .height(30)
+    .padding({ left: 10, right: 8 })
+    .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_SUCCESS
+      ? this.theme.primary : this.theme.chipBg)
+    .borderRadius(15)
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => { this.vm.setActivityTab(ACTIVITY_TAB_SUCCESS); })
+  }
+
+  @Builder
+  buildTabFailed() {
+    Row({ space: 4 }) {
+      Text('Failed')
+        .fontSize(12)
+        .fontWeight(this.vm.activityTab === ACTIVITY_TAB_FAILED
+          ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_FAILED
+          ? this.theme.primaryContrast : this.theme.textSecondary)
+
+      Text(`${this.tabFailedCount}`)
+        .fontSize(10)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.vm.activityTab === ACTIVITY_TAB_FAILED
+          ? this.theme.primaryContrast : this.theme.textTertiary)
+        .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_FAILED
+          ? '#33FFFFFF' : this.theme.chipBg)
+        .borderRadius(8)
+        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+        .constraintSize({ minWidth: 14 })
+        .textAlign(TextAlign.Center)
+    }
+    .height(30)
+    .padding({ left: 10, right: 8 })
+    .backgroundColor(this.vm.activityTab === ACTIVITY_TAB_FAILED
+      ? this.theme.primary : this.theme.chipBg)
+    .borderRadius(15)
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => { this.vm.setActivityTab(ACTIVITY_TAB_FAILED); })
+  }
+
+  @Builder
+  buildActivityTab(key: string, label: string, count: number) {
+    Row({ space: 4 }) {
+      Text(label)
+        .fontSize(12)
+        .fontWeight(this.vm.activityTab === key
+          ? FontWeight.Medium : FontWeight.Normal)
+        .fontColor(this.vm.activityTab === key
+          ? this.theme.primaryContrast : this.theme.textSecondary)
+
+      Text(`${count}`)
+        .fontSize(10)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.vm.activityTab === key
+          ? this.theme.primaryContrast : this.theme.textTertiary)
+        .backgroundColor(this.vm.activityTab === key
+          ? '#33FFFFFF' : this.theme.chipBg)
+        .borderRadius(8)
+        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+        .constraintSize({ minWidth: 14 })
+        .textAlign(TextAlign.Center)
+    }
+    .height(30)
+    .padding({ left: 10, right: 8 })
+    .backgroundColor(this.vm.activityTab === key
+      ? this.theme.primary : this.theme.chipBg)
+    .borderRadius(15)
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => { this.vm.setActivityTab(key); })
+  }
+
+  @Builder
+  buildActivityGroups() {
+    List({ space: 1 }) {
+      ForEach(this.groupOpsByTab(this.vm.activityTab),
+        (group: ActivityGroup) => {
+          ListItem() {
+            this.buildDateHeader(group.dateLabel, group.operations.length)
+          }
+
+          ForEach(group.operations, (op: Operation) => {
+            ListItem() { this.buildActivityRow(op) }
+          }, (op: Operation) =>
+          `${op.id}_${op.status}_${op.progress}_${op.completedAt}_${op.errorMessage}`
+          )
+        }, (group: ActivityGroup) =>
+        `${this.vm.activityTab}_${group.dateLabel}_${group.operations.length}`
+      )
+    }
+    .width('100%')
+    .constraintSize({ maxHeight: 420 })
+    .divider({ strokeWidth: 1, color: this.theme.divider })
+  }
+
+  @Builder
+  buildDateHeader(label: string, count: number) {
+    Row() {
+      Text(label)
+        .fontSize(12).fontWeight(FontWeight.Medium)
+        .fontColor(this.theme.textSecondary).layoutWeight(1)
+      Text(`${count}`)
+        .fontSize(11).fontColor(this.theme.textTertiary)
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 14, bottom: 8 })
+    .backgroundColor(this.theme.background)
+  }
+
+  @Builder
+  buildActivityEmptyState() {
+    Column({ space: 10 }) {
+      Text(this.emptyStateGlyph())
+        .fontSize(42).fontColor(this.theme.textTertiary)
+      Text(this.emptyStateLabel())
+        .fontSize(14).fontColor(this.theme.textSecondary)
+    }
+    .width('100%').height(200).justifyContent(FlexAlign.Center)
+  }
+
+  private emptyStateGlyph(): string {
+    if (this.vm.activityTab === ACTIVITY_TAB_PENDING) return '⏳';
+    if (this.vm.activityTab === ACTIVITY_TAB_FAILED) return '!';
+    if (this.vm.activityTab === ACTIVITY_TAB_SUCCESS) return '✓';
+    return '✓';
+  }
+
+  private emptyStateLabel(): string {
+    if (this.vm.activityTab === ACTIVITY_TAB_ALL) return 'No recent tasks';
+    if (this.vm.activityTab === ACTIVITY_TAB_PENDING) return 'No pending tasks';
+    if (this.vm.activityTab === ACTIVITY_TAB_SUCCESS) return 'No completed tasks';
+    return 'No failed tasks';
   }
 
   @Builder
@@ -1287,7 +1693,17 @@ struct FileBrowserPage {
       }
       .alignItems(HorizontalAlign.Start).layoutWeight(1)
 
-      if (isActiveStatus(op.status)) {
+      // ---- Right-side status indicator ----
+      if (RETRY_ENABLED && canRetry(op)) {
+        Text('↻')
+          .fontSize(20)
+          .fontColor(this.theme.primary)
+          .width(32).height(32)
+          .textAlign(TextAlign.Center)
+          .onClick(() => {
+            this.vm.retrySingleOperation(op.id);
+          })
+      } else if (isActiveStatus(op.status)) {
         LoadingProgress().width(18).height(18).color(this.theme.primary)
       } else if (op.status === OperationStatus.SUCCESS) {
         Text('✓').fontSize(18).fontColor(this.theme.success)
@@ -1307,6 +1723,7 @@ struct FileBrowserPage {
       case OperationStatus.RUNNING: return this.theme.primary;
       case OperationStatus.SUCCESS: return this.theme.success;
       case OperationStatus.FAILED: return this.theme.error;
+      case OperationStatus.CANCELLED: return this.theme.textSecondary;
       default: return this.theme.textSecondary;
     }
   }
@@ -1435,16 +1852,20 @@ struct FileBrowserPage {
   @Builder
   buildAccountChildRow(account: AccountInfo) {
     Row({ space: 10 }) {
-      Column().width(2).height(36)
+      Column()
+        .width(2).height(36)
         .backgroundColor(this.theme.border)
         .margin({ left: 15, right: 4 })
+
       Column() {
         Text(FileBrowserViewModel.initialOf(account))
           .fontSize(13).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
       }
       .width(30).height(30).borderRadius(15)
       .backgroundColor(FileBrowserViewModel.colorForProvider(account.provider))
-      .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+
       Column({ space: 2 }) {
         Text(account.displayName)
           .fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
@@ -1455,15 +1876,17 @@ struct FileBrowserPage {
           .fontSize(11).fontColor(this.theme.textSecondary)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
       }
-      .alignItems(HorizontalAlign.Start).layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
       if (account.accountId === this.vm.activeAccountId) {
         Text('✓').fontSize(16).fontColor(this.theme.primary)
       }
     }
-    .width('100%').padding({ left: 0, right: 16, top: 8, bottom: 8 })
+    .width('100%')
+    .padding({ left: 0, right: 16, top: 8, bottom: 8 })
     .backgroundColor(account.accountId === this.vm.activeAccountId
-      ? this.theme.chipSelectedBg
-      : Color.Transparent)
+      ? this.theme.chipSelectedBg : Color.Transparent)
     .onClick(() => { this.vm.onSwitchAccount(account.accountId); })
   }
 }

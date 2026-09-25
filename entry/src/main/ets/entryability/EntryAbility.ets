@@ -5,6 +5,9 @@ import { AccountStore } from '../core/auth/AccountStore';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { Routes } from '../utils/RouteConstants';
 import { Logger } from '../utils/Logger';
+import { OfflineStore } from '../core/services/OfflineStore';
+import { OperationStore } from '../core/services/OperationStore';
+import { OperationTracker } from '../core/services/OperationTracker';
 
 const TAG: string = 'EntryAbility';
 
@@ -22,6 +25,10 @@ export default class EntryAbility extends UIAbility {
 
     // Initialise theme (loads persisted choice + applies to system).
     await ThemeManager.get().init(this.context);
+
+    await OfflineStore.init(this.context);
+    await OperationStore.init(this.context);
+    await OperationTracker.get().loadPersisted();
 
     // Decide entry page.
     let target: string = Routes.ONBOARDING;

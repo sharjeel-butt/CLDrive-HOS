@@ -53,7 +53,10 @@ interface CreateUploadSessionBody {
   item: UploadSessionItem;
 }
 
-interface UploadSessionResponse {
+// ---------------------------------------------------------------------------
+// EXPORTED response type — consumed by OneDriveProvider
+// ---------------------------------------------------------------------------
+export interface UploadSessionResponse {
   uploadUrl: string;
   expirationDateTime: string;
 }
@@ -176,18 +179,6 @@ export class OneDriveApiClient {
       .executeJson<GraphDriveItem>();
   }
 
-  /**
-   * Copy an item.
-   *
-   * Microsoft Graph's copy endpoint is asynchronous:
-   *   - Small files and empty folders: 200/201 with the new DriveItem → null.
-   *   - Folders with contents and very large files: 202 Accepted with a
-   *     `Location` header pointing at a monitor URL → that URL is returned.
-   *
-   * Conflict behavior:
-   *   - newName provided → rename on collision (caller pre-resolved).
-   *   - newName omitted  → fail on collision so the caller can prompt.
-   */
   async copyItem(
     accessToken: string,
     itemId: string,
@@ -212,7 +203,6 @@ export class OneDriveApiClient {
 
     const url = `${this.base}/me/drive/items/${encodeURIComponent(itemId)}/copy`;
 
-    // Build a typed HttpRequestOptions instance (no anonymous literal).
     const opts = new HttpRequestOptions();
     opts.method = http.RequestMethod.POST;
     opts.headers.set('Authorization', `Bearer ${accessToken}`);
@@ -220,7 +210,6 @@ export class OneDriveApiClient {
 
     const response: HttpResponse = await HttpClient.requestWithHeaders(url, opts);
 
-    // 202 Accepted → async copy; return the monitor URL from Location.
     if (response.statusCode === 202) {
       const location: string | undefined = response.headers['location'];
       if (location !== undefined && location.length > 0) {
@@ -237,7 +226,6 @@ export class OneDriveApiClient {
       return null;
     }
 
-    // 200 / 201 → synchronous completion.
     return null;
   }
 

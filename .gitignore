@@ -1,12 +1,23 @@
-/node_modules
-/oh_modules
-/local.properties
-/.idea
-**/build
-/.hvigor
-.cxx
-/.clangd
-/.clang-format
-/.clang-tidy
-**/.test
-/.appanalyzer
+# --- HarmonyOS / DevEco Studio ---
+node_modules/
+oh_modules/
+build/
+.preview/
+default/
+.hvigor/
+.idea/
+*.iml
+local.properties
+**/oh-package-lock.json5
+build-profile.json5.bak
+
+# --- Sensitive Configuration Files ---
+# Create a template (e.g., OneDriveConfig.template.ets) and gitignore the real one.
+**/OneDriveConfig.ets
+**/GoogleDriveConfig.ets
+**/secrets.json
+*.keystore
+*.p12
+*.cer
+.env
+.env.*

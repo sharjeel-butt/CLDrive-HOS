@@ -19,7 +19,7 @@ one class.
 
 ---
 
-**🌐 Languages:** English · [Русский](readme/ru/) · [简体中文](readme/zh-Hans/) · [العربية](readme/ar/) · [Español](readme/es/)
+**🌐 Languages:** [English](/CLDrive-HOS/) · [Русский](readme/ru/) · [简体中文](readme/zh-Hans/) · [العربية](readme/ar/) · [Español](readme/es/)
 
 **📄 [Privacy Policy](privacy/en/)** · [Source code](https://github.com/sharjeel-butt/CLDrive-HOS)
 

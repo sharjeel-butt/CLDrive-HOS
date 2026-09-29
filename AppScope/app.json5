@@ -2,9 +2,9 @@
   "app": {
     "bundleName": "com.cldrive.hos.app",
     "vendor": "Sharjeel Butt",
-    "versionCode": 1002000,
-    "versionName": "1.2.0",
-    "buildVersion": "200",
+    "versionCode": 1002001,
+    "versionName": "1.2.1",
+    "buildVersion": "121",
     "icon": "$media:app_icon",
     "label": "$string:app_name",
     "cloudFileSyncEnabled": true

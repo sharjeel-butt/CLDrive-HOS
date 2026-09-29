@@ -3,6 +3,8 @@
     "pages/OnboardingPage",
     "pages/FileBrowserPage",
     "pages/ItemDetailsPage",
-    "pages/SettingsPage"
+    "pages/SettingsPage",
+    "pages/PrivacyPolicyPage",
+    "pages/PrivacyPolicyViewerPage"
   ]
 }

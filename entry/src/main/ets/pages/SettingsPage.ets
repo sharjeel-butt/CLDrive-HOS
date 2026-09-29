@@ -6,6 +6,7 @@ import { UiPrefs } from '../core/settings/UiPrefs';
 import { OfflineStore, CacheInfo } from '../core/services/OfflineStore';
 import { Logger } from '../utils/Logger';
 import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
+import { Routes } from '../utils/RouteConstants';
 
 const TAG: string = 'SettingsPage';
 
@@ -208,9 +209,11 @@ struct SettingsPage {
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
             this.buildAboutRow('Build', this.buildNumber())
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Provider', 'OneDrive · Google Drive · Dropbox')
+            this.buildAboutRow('Provider', 'OneDrive · Drive · Dropbox')
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Cloud', 'Microsoft Graph v1.0 · Drive v3 · Dropbox v2')
+            this.buildAboutRow('Cloud', 'Graph v1.0 · Drive v3 · Dropbox v2')
+            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+            this.buildPrivacyPolicyRow()
           }
           .width('100%')
           .backgroundColor(this.theme.surface)
@@ -225,9 +228,6 @@ struct SettingsPage {
       .width('100%')
       .scrollBar(BarState.Off)
       .onScroll((xOffset: number, yOffset: number) => {
-        // Collapse once the user has scrolled past ~16 vp; expand again
-        // when they return near the top. Hysteresis via the flag check
-        // avoids re-rendering on every scroll tick.
         const shouldCollapse: boolean = yOffset > 16;
         if (shouldCollapse !== this.headerCollapsed) {
           this.headerCollapsed = shouldCollapse;
@@ -513,5 +513,33 @@ struct SettingsPage {
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 16 })
+  }
+
+  @Builder
+  buildPrivacyPolicyRow() {
+    Row({ space: 12 }) {
+      Text('🔒')
+        .fontSize(16)
+        .width(24)
+        .textAlign(TextAlign.Center)
+
+      Text('Privacy Policy')
+        .fontSize(15)
+        .fontColor(this.theme.primary)
+        .layoutWeight(1)
+
+      Text('›')
+        .fontSize(20)
+        .fontColor(this.theme.primary)
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 16, bottom: 16 })
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      router.pushUrl({ url: Routes.PRIVACY_VIEWER })
+        .catch((e: Error) => {
+          Logger.error(TAG, `pushUrl privacy viewer failed: ${e.message}`);
+        });
+    })
   }
 }

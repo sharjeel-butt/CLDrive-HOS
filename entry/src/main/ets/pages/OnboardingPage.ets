@@ -3,7 +3,8 @@ import {
   OnboardingViewModel,
   ProviderOption,
   STEP_SELECT_PROVIDER,
-  MOBILE_USER_AGENT
+  MOBILE_USER_AGENT,
+  STEP_AUTHENTICATE
 } from '../viewmodels/OnboardingViewModel';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { ThemeManager } from '../core/theme/ThemeManager';
@@ -28,6 +29,30 @@ struct OnboardingPage {
 
   aboutToDisappear(): void {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
+  }
+
+  /**
+   * Called before the system back gesture/button pops the page.
+   *
+   * During the WebView step, back should first consume the Web's own
+   * history (so users can navigate back through the provider's pages).
+   * If there is no Web history left, return to the provider picker
+   * instead of popping the whole OnboardingPage — otherwise the user
+   * lands on the account selection with no way to retry.
+   *
+   * Returning false on the provider-selection step lets the default
+   * navigation behaviour pop the page as usual.
+   */
+  onBackPress(): boolean {
+    if (this.vm.step === STEP_AUTHENTICATE) {
+      if (this.controller.accessBackward()) {
+        this.controller.backward();
+        return true;
+      }
+      this.vm.onBack();
+      return true;
+    }
+    return false;
   }
 
   // ---------------------------------------------------------------------------

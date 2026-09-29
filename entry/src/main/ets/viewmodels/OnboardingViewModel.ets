@@ -24,6 +24,7 @@ import { Routes } from '../utils/RouteConstants';
 
 const TAG: string = 'OnboardingViewModel';
 
+
 export const STEP_SELECT_PROVIDER: number = 0;
 export const STEP_AUTHENTICATE: number = 1;
 
@@ -68,6 +69,7 @@ export class OnboardingViewModel {
   ];
 
   private oauthState: string = '';
+  private redirectConsumed: boolean = false;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -91,6 +93,7 @@ export class OnboardingViewModel {
   async onSelectProvider(type: CloudProviderType): Promise<void> {
     this.selectedProvider = type;
     this.oauthState = `state_${Date.now()}`;
+    this.redirectConsumed = false;
     this.statusMessage = '';
     this.isLoading = false;
 
@@ -111,6 +114,7 @@ export class OnboardingViewModel {
     this.statusMessage = '';
     this.oauthState = '';
     this.isLoading = false;
+    this.redirectConsumed = false;
     this.step = STEP_SELECT_PROVIDER;
   }
 
@@ -119,6 +123,11 @@ export class OnboardingViewModel {
   }
 
   async handleRedirect(url: string): Promise<void> {
+    if (this.redirectConsumed) {
+      Logger.info(TAG, 'Duplicate redirect ignored.');
+      return;
+    }
+    this.redirectConsumed = true;
     const params = parseQuery(url);
 
     const returnedState = params.get('state');

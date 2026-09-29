@@ -12,6 +12,9 @@ export function styleForProvider(type: CloudProviderType): ProviderStyle {
   if (type === CloudProviderType.GOOGLE_DRIVE) {
     return { glyph: '▲', color: '#4285F4' };
   }
+  if (type === CloudProviderType.DROPBOX) {
+    return { glyph: '◆', color: '#0061FF' };
+  }
   return { glyph: '☁', color: '#666666' };
 }
 
@@ -27,14 +30,12 @@ export struct ProviderIcon {
       this.buildBrandIcon($r('app.media.provider_onedrive'))
     } else if (this.provider === CloudProviderType.GOOGLE_DRIVE) {
       this.buildBrandIcon($r('app.media.provider_googledrive'))
+    } else if (this.provider === CloudProviderType.DROPBOX) {
+      this.buildBrandIcon($r('app.media.provider_dropbox'))
     } else {
       this.buildGlyphBadge()
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Brand icon — SVG on a white badge (both logos read best on white)
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildBrandIcon(source: Resource) {
@@ -55,10 +56,6 @@ export struct ProviderIcon {
     .alignItems(HorizontalAlign.Center)
     .clip(true)
   }
-
-  // ---------------------------------------------------------------------------
-  // Glyph badge — fallback for providers without an SVG asset
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildGlyphBadge() {

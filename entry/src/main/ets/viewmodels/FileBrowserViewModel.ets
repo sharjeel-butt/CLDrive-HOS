@@ -638,7 +638,7 @@ export class FileBrowserViewModel {
           i + 1,
           files.length
         );
-        tracker.markRunning(opId);
+        tracker.markRetrying(opId);
 
         try {
           const parentId: string =
@@ -1016,7 +1016,7 @@ export class FileBrowserViewModel {
     }
 
     for (let i = 0; i < retryable.length; i++) {
-      tracker.markRunning(retryable[i].id);
+      tracker.markRetrying(retryable[i].id);
     }
 
     let success: number = 0;

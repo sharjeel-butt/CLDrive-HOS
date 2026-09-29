@@ -178,15 +178,25 @@ struct OnboardingPage {
           .onLoadIntercept((event) => {
             const url: string = event.data.getRequestUrl();
 
+            // OneDrive redirect
             if (url.startsWith('https://cl.drive/oauth')) {
               this.vm.handleRedirect(url);
               return true;
             }
+
+            // Google Drive loopback redirect
             if (url.startsWith('http://127.0.0.1:8080/oauth2redirect')
               || url.startsWith('http://localhost:8080/oauth2redirect')) {
               this.vm.handleRedirect(url);
               return true;
             }
+
+            // Dropbox redirect
+            if (url.startsWith('https://cl.drive/dropbox-oauth')) {
+              this.vm.handleRedirect(url);
+              return true;
+            }
+
             return false;
           })
           .domStorageAccess(true)

@@ -69,7 +69,8 @@ export class OperationStore {
           batchIndex: op.batchIndex,
           batchTotal: op.batchTotal,
           errorMessage: 'Interrupted by app restart',
-          retryPayload: op.retryPayload
+          retryPayload: op.retryPayload,
+          isRetry: op.isRetry
         });
       } else {
         sanitized.push(op);

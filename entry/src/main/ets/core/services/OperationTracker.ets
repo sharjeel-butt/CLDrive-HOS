@@ -167,6 +167,10 @@ export class OperationTracker {
     this.update(id, OperationStatus.RUNNING, -1, '');
   }
 
+  markRetrying(id: string): void {
+    this.update(id, OperationStatus.RUNNING, -1, '', true);
+  }
+
   updateProgress(id: string, progress: number): void {
     this.update(id, OperationStatus.RUNNING, progress, '');
   }
@@ -190,7 +194,8 @@ export class OperationTracker {
     id: string,
     status: OperationStatus,
     progress: number,
-    errorMessage: string
+    errorMessage: string,
+    isRetry?: boolean
   ): void {
     let changed: boolean = false;
     const next: Operation[] = [];
@@ -210,7 +215,10 @@ export class OperationTracker {
           batchIndex: op.batchIndex,
           batchTotal: op.batchTotal,
           errorMessage,
-          retryPayload: op.retryPayload
+          retryPayload: op.retryPayload,
+          // isRetry stays true if it was set and we're still running,
+          // otherwise falls back to the caller's value (or keeps existing).
+          isRetry: isRetry !== undefined ? isRetry : op.isRetry
         });
         changed = true;
       } else {
@@ -271,4 +279,6 @@ export class OperationTracker {
       this.notify();
     }
   }
+
+
 }

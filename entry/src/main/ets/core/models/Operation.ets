@@ -54,8 +54,9 @@ export interface Operation {
   batchIndex: number;
   batchTotal: number;
   errorMessage: string;
-  /** Present when the operation can be retried. */
   retryPayload?: RetryPayload;
+  /** True while an operation is being retried after a previous failure. */
+  isRetry: boolean;
 }
 
 export function createOperation(
@@ -81,7 +82,8 @@ export function createOperation(
     batchIndex,
     batchTotal,
     errorMessage: '',
-    retryPayload
+    retryPayload,
+    isRetry: false
   };
 }
 

@@ -5,6 +5,8 @@ import { OneDriveProvider } from './onedrive/OneDriveProvider';
 import { OneDriveAuthProvider } from './onedrive/OneDriveAuthProvider';
 import { GoogleDriveProvider } from './googledrive/GoogleDriveProvider';
 import { GoogleDriveAuthProvider } from './googledrive/GoogleDriveAuthProvider';
+import { DropboxProvider } from './dropbox/DropboxProvider';
+import { DropboxAuthProvider } from './dropbox/DropboxAuthProvider';
 
 export class CloudProviderFactory {
   private static providerCache: Map<string, ICloudProvider> = new Map();
@@ -27,6 +29,9 @@ export class CloudProviderFactory {
       case CloudProviderType.GOOGLE_DRIVE:
         provider = new GoogleDriveProvider(accountId);
         break;
+      case CloudProviderType.DROPBOX:
+        provider = new DropboxProvider(accountId);
+        break;
       default:
         throw new Error(`Unsupported provider: ${type}`);
     }
@@ -47,6 +52,9 @@ export class CloudProviderFactory {
         break;
       case CloudProviderType.GOOGLE_DRIVE:
         auth = new GoogleDriveAuthProvider();
+        break;
+      case CloudProviderType.DROPBOX:
+        auth = new DropboxAuthProvider();
         break;
       default:
         throw new Error(`Unsupported auth provider: ${type}`);

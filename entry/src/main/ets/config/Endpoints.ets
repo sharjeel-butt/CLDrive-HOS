@@ -41,4 +41,20 @@ export class Endpoints {
   // ---------------------------------------------------------------------------
   static readonly GOOGLE_REDIRECT_URI: string =
     'http://127.0.0.1:8080/oauth2redirect';
+
+  // Dropbox identity platform
+  static readonly DROPBOX_AUTH_URL: string =
+    'https://www.dropbox.com/oauth2/authorize';
+  static readonly DROPBOX_TOKEN_URL: string =
+    'https://api.dropboxapi.com/oauth2/token';
+
+  // Dropbox API v2
+  static readonly DROPBOX_API_BASE: string =
+    'https://api.dropboxapi.com/2';
+  static readonly DROPBOX_CONTENT_BASE: string =
+    'https://content.dropboxapi.com/2';
+
+  // Dropbox OAuth redirect (intercepted in the WebView)
+  static readonly DROPBOX_REDIRECT_URI: string =
+    'https://cl.drive/dropbox-oauth';
 }

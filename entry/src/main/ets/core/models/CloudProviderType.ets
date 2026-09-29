@@ -1,4 +1,5 @@
 export enum CloudProviderType {
   ONEDRIVE = 'onedrive',
-  GOOGLE_DRIVE = 'googledrive'
+  GOOGLE_DRIVE = 'googledrive',
+  DROPBOX = 'dropbox'
 }

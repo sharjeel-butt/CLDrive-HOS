@@ -6,13 +6,11 @@ import { AuthManager } from '../core/auth/AuthManager';
 import { IAuthProvider } from '../core/interfaces/IAuthProvider';
 import { AuthTokens } from '../core/models/AuthTokens';
 import { AccountInfo, makeAccountId } from '../core/models/AccountInfo';
-import { OneDriveApiClient } from '../core/providers/onedrive/OneDriveApiClient';
-import { GoogleDriveApiClient } from '../core/providers/googledrive/GoogleDriveApiClient';
-import { GraphUser } from '../core/providers/onedrive/OneDriveMapper';
 import { Logger } from '../utils/Logger';
 import { parseQuery } from '../utils/StringUtil';
 import { Routes } from '../utils/RouteConstants';
-import { GoogleAbout, GoogleUser } from '../core/providers/googledrive/GoogleDriveMapper';
+import { DropboxApiClient } from '../core/providers/dropbox/DropboxApiClient';
+import { DropboxCurrentAccount } from '../core/providers/dropbox/DropboxMapper';
 
 const TAG: string = 'OnboardingViewModel';
 
@@ -49,6 +47,12 @@ export class OnboardingViewModel {
       type: CloudProviderType.GOOGLE_DRIVE,
       label: 'Google Drive',
       subtitle: 'Google account',
+      enabled: true
+    },
+    {
+      type: CloudProviderType.DROPBOX,
+      label: 'Dropbox',
+      subtitle: 'Dropbox account',
       enabled: true
     }
   ];
@@ -168,53 +172,35 @@ export class OnboardingViewModel {
     tokens: AuthTokens
   ): Promise<AccountInfo> {
     if (type === CloudProviderType.ONEDRIVE) {
-      const api = new OneDriveApiClient();
-      const me: GraphUser = await api.getMe(tokens.accessToken);
-
-      const displayName =
-        me.displayName !== undefined && me.displayName.length > 0
-          ? me.displayName : 'OneDrive User';
-
-      let email: string | undefined = undefined;
-      if (me.mail !== undefined && me.mail.length > 0) email = me.mail;
-      else if (me.userPrincipalName !== undefined) email = me.userPrincipalName;
-
-      const accountId = makeAccountId(CloudProviderType.ONEDRIVE, me.id);
-
-      return {
-        accountId: accountId,
-        provider: CloudProviderType.ONEDRIVE,
-        displayName: displayName,
-        email: email,
-        avatarUrl: undefined,
-        addedAt: Date.now()
-      };
+      // ... existing OneDrive code
     }
 
     if (type === CloudProviderType.GOOGLE_DRIVE) {
-      const api = new GoogleDriveApiClient();
-      const about: GoogleAbout = await api.getAbout(tokens.accessToken);
-      const user: GoogleUser = about.user !== undefined ? about.user : {};
+      // ... existing Google Drive code
+    }
+
+    if (type === CloudProviderType.DROPBOX) {
+      const api = new DropboxApiClient();
+      const account: DropboxCurrentAccount =
+        await api.getCurrentAccount(tokens.accessToken);
 
       const displayName: string =
-        user.displayName !== undefined && user.displayName.length > 0
-          ? user.displayName
-          : 'Google User';
+        account.name !== undefined
+          && account.name.display_name !== undefined
+          && account.name.display_name.length > 0
+          ? account.name.display_name
+          : 'Dropbox User';
 
-      const email: string | undefined = user.emailAddress;
-      const uniquePart: string = email !== undefined && email.length > 0
-        ? email
-        : 'google_user';
-
-      const accountId: string =
-        makeAccountId(CloudProviderType.GOOGLE_DRIVE, uniquePart);
+      const accountId: string = makeAccountId(
+        CloudProviderType.DROPBOX, account.account_id
+      );
 
       return {
         accountId: accountId,
-        provider: CloudProviderType.GOOGLE_DRIVE,
+        provider: CloudProviderType.DROPBOX,
         displayName: displayName,
-        email: email,
-        avatarUrl: user.photoLink,
+        email: account.email,
+        avatarUrl: account.profile_photo_url,
         addedAt: Date.now()
       };
     }

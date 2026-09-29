@@ -15,6 +15,7 @@ build-profile.json5.bak
 # Create a template (e.g., OneDriveConfig.template.ets) and gitignore the real one.
 **/OneDriveConfig.ets
 **/GoogleDriveConfig.ets
+**/DropboxConfig.ets
 **/secrets.json
 *.keystore
 *.p12

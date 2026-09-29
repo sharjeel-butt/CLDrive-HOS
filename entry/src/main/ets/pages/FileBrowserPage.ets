@@ -28,7 +28,7 @@ import { Routes } from '../utils/RouteConstants';
  * FileBrowserViewModel is preserved and functional. Flip to `true`
  * to bring back both the per-row ↻ button and the Retry All action.
  */
-const RETRY_ENABLED: boolean = false;
+const RETRY_ENABLED: boolean = true;
 
 @Entry
 @Component
@@ -43,6 +43,7 @@ struct FileBrowserPage {
   @State private canClearAll: boolean = false;
   @State private activeOpCount: number = 0;
   @State private hasFinishedOps: boolean = false;
+  @State private listVersion: number = 0;
 
   // ---- Tab counts (primitive @State → guaranteed re-render) ----
   @State private tabAllCount: number = 0;
@@ -90,6 +91,7 @@ struct FileBrowserPage {
     this.canClearAll = anyFinished;
     this.activeOpCount = pending;
     this.hasFinishedOps = anyFinished;
+    this.listVersion = this.listVersion + 1;
   };
 
   private onThemeChanged = (): void => {
@@ -1604,7 +1606,8 @@ struct FileBrowserPage {
           `${op.id}_${op.status}_${op.progress}_${op.completedAt}_${op.errorMessage}`
           )
         }, (group: ActivityGroup) =>
-        `${this.vm.activityTab}_${group.dateLabel}_${group.operations.length}`
+        `${this.vm.activityTab}_${group.dateLabel}_` +
+          `${group.operations.length}_${this.listVersion}`
       )
     }
     .width('100%')
@@ -1675,7 +1678,9 @@ struct FileBrowserPage {
             Text(`· ${op.batchIndex} of ${op.batchTotal}`)
               .fontSize(11).fontColor(this.theme.textSecondary)
           }
-          Text(`· ${operationStatusLabel(op.status)}`)
+          Text(`· ${op.isRetry && op.status === OperationStatus.RUNNING
+            ? 'Retrying'
+            : operationStatusLabel(op.status)}`)
             .fontSize(11).fontColor(this.statusColor(op.status))
         }
 

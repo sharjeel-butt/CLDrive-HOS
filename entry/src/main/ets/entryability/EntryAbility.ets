@@ -5,6 +5,7 @@ import { AccountStore } from '../core/auth/AccountStore';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { UiPrefs } from '../core/settings/UiPrefs';
 import { PrivacyPrefs } from '../core/settings/PrivacyPrefs';
+import { LanguageManager } from '../core/i18n/LanguageManager';
 import { Routes } from '../utils/RouteConstants';
 import { Logger } from '../utils/Logger';
 import { OfflineStore } from '../core/services/OfflineStore';
@@ -22,38 +23,40 @@ export default class EntryAbility extends UIAbility {
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
     Logger.info(TAG, 'onWindowStageCreate');
 
-    // Initialise persistent stores.
     await AccountStore.init(this.context);
     await ThemeManager.get().init(this.context);
+    await LanguageManager.init(this.context);   // ← load language first
     await UiPrefs.init(this.context);
     await PrivacyPrefs.init(this.context);
     await OfflineStore.init(this.context);
     await OperationStore.init(this.context);
     await OperationTracker.get().loadPersisted();
 
-    // Decide entry page.
+    // Three-stage gate: language → privacy → auth.
     let target: string = Routes.ONBOARDING;
     try {
-      const privacyAccepted: boolean = await PrivacyPrefs.isAccepted();
-      if (!privacyAccepted) {
-        target = Routes.PRIVACY_POLICY;
+      const chosen: boolean = await LanguageManager.hasChosen();
+      if (!chosen) {
+        target = Routes.LANGUAGE;
       } else {
-        const hasAccounts: boolean = await AuthManager.hasAccounts();
-        target = hasAccounts ? Routes.FILE_BROWSER : Routes.ONBOARDING;
+        const privacyAccepted: boolean = await PrivacyPrefs.isAccepted();
+        if (!privacyAccepted) {
+          target = Routes.PRIVACY_POLICY;
+        } else {
+          const hasAccounts: boolean = await AuthManager.hasAccounts();
+          target = hasAccounts ? Routes.FILE_BROWSER : Routes.ONBOARDING;
+        }
       }
     } catch (e) {
       const err: Error = e as Error;
       Logger.error(TAG, `Entry check failed: ${err.message}`);
-      // Fail open into Onboarding rather than blocking the app.
       target = Routes.ONBOARDING;
     }
 
     Logger.info(TAG, `Loading entry page: ${target}`);
 
     windowStage.loadContent(target)
-      .then(() => {
-        Logger.info(TAG, `Loaded ${target}`);
-      })
+      .then(() => { Logger.info(TAG, `Loaded ${target}`); })
       .catch((e: Error) => {
         Logger.error(TAG, `loadContent failed: ${e.message}`);
       });
@@ -64,15 +67,7 @@ export default class EntryAbility extends UIAbility {
     ThemeManager.get().onSystemColorModeChanged(newConfig.colorMode);
   }
 
-  onDestroy(): void {
-    Logger.info(TAG, 'onDestroy');
-  }
-
-  onForeground(): void {
-    Logger.info(TAG, 'onForeground');
-  }
-
-  onBackground(): void {
-    Logger.info(TAG, 'onBackground');
-  }
+  onDestroy(): void { Logger.info(TAG, 'onDestroy'); }
+  onForeground(): void { Logger.info(TAG, 'onForeground'); }
+  onBackground(): void { Logger.info(TAG, 'onBackground'); }
 }

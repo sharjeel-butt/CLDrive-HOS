@@ -12,10 +12,9 @@ import { CloudProviderType } from '../core/models/CloudProviderType';
 import { ICloudProvider } from '../core/interfaces/ICloudProvider';
 import { CloudItem } from '../core/models/CloudItem';
 import { CloudItemType } from '../core/models/CloudItemType';
-import { AccountInfo, providerFromAccountId } from '../core/models/AccountInfo';
+import { AccountInfo } from '../core/models/AccountInfo';
 import { AuthManager } from '../core/auth/AuthManager';
 import { DownloadInfo } from '../core/models/DownloadInfo';
-import { UiPrefs } from '../core/settings/UiPrefs';
 import {
   Operation, OperationType, OperationStatus, OperationItemKind,
   RetryPayload, canRetry
@@ -27,6 +26,7 @@ import { LocalFileService } from '../utils/FileUtil';
 import { formatError } from '../utils/ErrorFormatter';
 import { Logger } from '../utils/Logger';
 import { Routes } from '../utils/RouteConstants';
+import { t, tNamed } from '../core/i18n/I18n';
 
 const TAG: string = 'FileBrowserViewModel';
 
@@ -85,6 +85,10 @@ interface DownloadTask {
 
 interface TaskCounter {
   total: number;
+}
+
+interface NameSub {
+  name: string;
 }
 
 // =============================================================================
@@ -172,18 +176,6 @@ export class FileBrowserViewModel {
   async init(): Promise<void> {
     await this.loadOfflineIds();
 
-    // Apply the sidebar collapse preference before any UI renders.
-    try {
-      const collapse: boolean = await UiPrefs.getCollapseSidebarGroups();
-      this.onedriveExpanded = !collapse;
-      this.googleExpanded = !collapse;
-      this.dropboxExpanded = !collapse;
-    } catch (e) {
-      const err: Error = e as Error;
-      Logger.warn(TAG, `Failed to read sidebar preference: ${err.message}`);
-      // Field defaults already leave all groups collapsed.
-    }
-
     const activeId: string = await AuthManager.getActiveAccountId();
     if (activeId.length === 0) {
       router.replaceUrl({ url: Routes.ONBOARDING });
@@ -237,7 +229,7 @@ export class FileBrowserViewModel {
     if (onedrive.length > 0) {
       groups.push({
         type: CloudProviderType.ONEDRIVE,
-        label: 'OneDrive',
+        label: t('onb.provider.onedrive'),
         color: '#0078D4',
         icon: '☁',
         accounts: onedrive
@@ -246,7 +238,7 @@ export class FileBrowserViewModel {
     if (google.length > 0) {
       groups.push({
         type: CloudProviderType.GOOGLE_DRIVE,
-        label: 'Google Drive',
+        label: t('onb.provider.google'),
         color: '#4285F4',
         icon: '▲',
         accounts: google
@@ -255,7 +247,7 @@ export class FileBrowserViewModel {
     if (dropbox.length > 0) {
       groups.push({
         type: CloudProviderType.DROPBOX,
-        label: 'Dropbox',
+        label: t('onb.provider.dropbox'),
         color: '#0061FF',
         icon: '◆',
         accounts: dropbox
@@ -289,12 +281,12 @@ export class FileBrowserViewModel {
     const type: CloudProviderType =
       this.activeAccount !== null
         ? this.activeAccount.provider
-        : providerFromAccountId(accountId);
+        : CloudProviderType.ONEDRIVE;
 
     this.cloudProvider = CloudProviderFactory.getProvider(accountId, type);
 
     const rootName: string =
-      this.activeAccount !== null ? this.activeAccount.displayName : 'Files';
+      this.activeAccount !== null ? this.activeAccount.displayName : t('fb.files');
     this.crumbs = [{ id: 'root', name: rootName }];
     this.currentFolderId = 'root';
     this.exitSelectionMode();
@@ -323,15 +315,6 @@ export class FileBrowserViewModel {
     }
   }
 
-  /**
-   * Refresh the current folder listing without toggling isLoading.
-   * Used by pull-to-refresh, where the Refresh indicator is the
-   * progress UI and the list must stay on screen.
-   *
-   * Returns true on success. On failure, only surfaces errorMessage
-   * when the list is empty; otherwise the caller can show a toast
-   * and keep the stale list visible.
-   */
   async refreshCurrentFolder(): Promise<boolean> {
     if (this.cloudProvider === null) return false;
     try {
@@ -506,13 +489,6 @@ export class FileBrowserViewModel {
 
       const tracker: OperationTracker = OperationTracker.get();
 
-      // ===================================================================
-      // PHASE 0 — Copy every picked file to the sandbox.
-      //
-      // Picker URIs are session-scoped. Copying now (while the grant is
-      // still valid) produces a sandbox path that survives app restarts,
-      // so retries never hit "Operation not permitted".
-      // ===================================================================
       const sandboxPaths: string[] = [];
       const uploadNames: string[] = [];
       const opIds: string[] = [];
@@ -552,7 +528,10 @@ export class FileBrowserViewModel {
             OperationType.UPLOAD, finalName, '', OperationItemKind.FILE,
             i + 1, uris.length, failedPayload
           );
-          tracker.markFailed(failedId, `Could not prepare file: ${readable}`);
+          tracker.markFailed(
+            failedId,
+            `${t('fb.couldNotPrepare')}: ${readable}`
+          );
           continue;
         }
 
@@ -575,9 +554,6 @@ export class FileBrowserViewModel {
         opIds.push(opId);
       }
 
-      // ===================================================================
-      // PHASE 2 — Execute the batch sequentially.
-      // ===================================================================
       let success: number = 0;
       let failed: number = 0;
 
@@ -610,12 +586,15 @@ export class FileBrowserViewModel {
       if (failed === 0) {
         promptAction.showToast({
           message: success === 1
-            ? `Uploaded 1 file`
-            : `Uploaded ${success} files`
+            ? t('fb.uploaded')
+            : tNamed('fb.uploadedN', new Map([['n', `${success}`]]))
         });
       } else {
         promptAction.showToast({
-          message: `Uploaded ${success}, failed ${failed}`
+          message: tNamed('fb.uploadedMixed', new Map([
+            ['ok', `${success}`],
+            ['fail', `${failed}`]
+          ]))
         });
       }
     } catch (e) {
@@ -648,7 +627,7 @@ export class FileBrowserViewModel {
       const files: WalkedFile[] = FileBrowserViewModel.walkDirectory(rootPath);
 
       if (files.length === 0) {
-        promptAction.showToast({ message: 'The selected folder is empty' });
+        promptAction.showToast({ message: t('fb.uploadFolderEmpty') });
         return;
       }
 
@@ -710,7 +689,9 @@ export class FileBrowserViewModel {
       }
 
       await this.loadFolder(this.currentFolderId);
-      promptAction.showToast({ message: `Uploaded ${files.length} files` });
+      promptAction.showToast({
+        message: tNamed('fb.uploadedN', new Map([['n', `${files.length}`]]))
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
       Logger.warn(TAG, `upload folder cancelled or failed: ${readable}`);
@@ -871,11 +852,11 @@ export class FileBrowserViewModel {
     const label: string = this.activeAccount.displayName;
     this.isSidebarOpen = false;
     promptAction.showDialog({
-      title: 'Sign out',
-      message: `Sign out of ${label}? You'll need to sign in again to access it.`,
+      title: t('fb.signOutTitle'),
+      message: `${t('fb.signOutMsg')} ${label}?`,
       buttons: [
-        { text: 'Cancel', color: '#666666' },
-        { text: 'Sign out', color: '#F57C00' }
+        { text: t('common.cancel'), color: '#666666' },
+        { text: t('fb.signOut'), color: '#F57C00' }
       ]
     })
       .then((result: promptAction.ShowDialogSuccessResponse) => {
@@ -910,11 +891,11 @@ export class FileBrowserViewModel {
   onExitApp(): void {
     this.isSidebarOpen = false;
     promptAction.showDialog({
-      title: 'Exit',
-      message: 'Close the app?',
+      title: t('fb.exitTitle'),
+      message: t('fb.exitMsg'),
       buttons: [
-        { text: 'Cancel', color: '#666666' },
-        { text: 'Exit', color: '#D32F2F' }
+        { text: t('common.cancel'), color: '#666666' },
+        { text: t('fb.exit'), color: '#D32F2F' }
       ]
     })
       .then((result: promptAction.ShowDialogSuccessResponse) => {
@@ -952,17 +933,17 @@ export class FileBrowserViewModel {
 
   forceClearAllOperations(): void {
     promptAction.showDialog({
-      title: 'Force clear all?',
-      message: 'This removes every entry from the task list, including ones still running. Background work will continue but you will no longer see its status. Continue?',
+      title: t('fb.forceClearTitle'),
+      message: t('fb.forceClearMsg'),
       buttons: [
-        { text: 'Cancel', color: '#666666' },
-        { text: 'Force clear', color: '#D32F2F' }
+        { text: t('common.cancel'), color: '#666666' },
+        { text: t('fb.forceClear'), color: '#D32F2F' }
       ]
     })
       .then((r: promptAction.ShowDialogSuccessResponse) => {
         if (r.index === 1) {
           OperationTracker.get().forceClearAll();
-          promptAction.showToast({ message: 'Task list cleared' });
+          promptAction.showToast({ message: t('fb.taskListCleared') });
         }
       })
       .catch(() => { /* dismissed */ });
@@ -1000,7 +981,7 @@ export class FileBrowserViewModel {
   }
 
   // ===========================================================================
-  // Retry — preserved but hidden in the page behind RETRY_ENABLED flag
+  // Retry
   // ===========================================================================
 
   async retrySingleOperation(opId: string): Promise<void> {
@@ -1009,12 +990,10 @@ export class FileBrowserViewModel {
     if (op === null) return;
 
     if (!canRetry(op)) {
-      promptAction.showToast({ message: 'This task cannot be retried' });
+      promptAction.showToast({ message: t('fb.cannotRetry') });
       return;
     }
 
-    // Legacy upload tasks registered before sandbox-copy was added still
-    // carry a picker URI. Re-pick the file instead.
     if (op.type === OperationType.UPLOAD) {
       const localUri: string =
         op.retryPayload !== undefined
@@ -1057,15 +1036,15 @@ export class FileBrowserViewModel {
     }
 
     if (retryable.length === 0 && skipped === 0) {
-      promptAction.showToast({ message: 'No failed tasks to retry' });
+      promptAction.showToast({ message: t('fb.noFailedToRetry') });
       return;
     }
 
     if (retryable.length === 0 && skipped > 0) {
       promptAction.showToast({
         message: skipped === 1
-          ? 'Tap ↻ on the failed upload to re-select the file'
-          : 'Tap ↻ on each failed upload to re-select the files'
+          ? t('fb.tapToReselect')
+          : t('fb.tapToReselectPlural')
       });
       return;
     }
@@ -1089,15 +1068,21 @@ export class FileBrowserViewModel {
 
     if (skipped > 0) {
       promptAction.showToast({
-        message: `Retried ${success}, ${skipped} need re-selection (tap ↻)`
+        message: tNamed('fb.retriedReselect', new Map([
+          ['ok', `${success}`],
+          ['skip', `${skipped}`]
+        ]))
       });
     } else if (failed === 0) {
       promptAction.showToast({
-        message: `Retried ${success} task${success === 1 ? '' : 's'}`
+        message: `${t('fb.retried')} ${success}`
       });
     } else {
       promptAction.showToast({
-        message: `Retried ${success}, failed ${failed}`
+        message: tNamed('fb.retriedMixed', new Map([
+          ['ok', `${success}`],
+          ['fail', `${failed}`]
+        ]))
       });
     }
   }
@@ -1128,12 +1113,10 @@ export class FileBrowserViewModel {
           ? payload.localUri : '';
 
         if (localUri.length === 0) {
-          throw new Error('Missing local file for retry');
+          throw new Error(t('fb.missingLocalFile'));
         }
         if (!this.isSandboxPath(localUri)) {
-          throw new Error(
-            'Source file is from a previous session. Tap ↻ to re-select it.'
-          );
+          throw new Error(t('fb.sourceFromPrevSession'));
         }
 
         await provider.uploadFile(parentId, op.itemName, localUri);
@@ -1150,7 +1133,7 @@ export class FileBrowserViewModel {
         const targetId: string = payload.targetFolderId !== undefined
           ? payload.targetFolderId : '';
         if (targetId.length === 0) {
-          throw new Error('Missing destination for retry');
+          throw new Error(t('fb.missingDestination'));
         }
         let finalName: string | undefined = undefined;
         const sibling: CloudItem | null =
@@ -1167,7 +1150,7 @@ export class FileBrowserViewModel {
         const targetId: string = payload.targetFolderId !== undefined
           ? payload.targetFolderId : '';
         if (targetId.length === 0) {
-          throw new Error('Missing destination for retry');
+          throw new Error(t('fb.missingDestination'));
         }
         let finalName: string | undefined = undefined;
         const sibling: CloudItem | null =
@@ -1189,7 +1172,7 @@ export class FileBrowserViewModel {
         const targetUri: string = payload.targetUri !== undefined
           ? payload.targetUri : '';
         if (targetUri.length === 0) {
-          throw new Error('Missing download destination for retry');
+          throw new Error(t('fb.missingDownloadDest'));
         }
         const info: DownloadInfo = await provider.getDownloadInfo(op.itemId);
         await this.downloadViaHttp(info, targetUri, op.itemName, op.itemId, opId);
@@ -1214,12 +1197,11 @@ export class FileBrowserViewModel {
     try {
       const result: promptAction.ShowDialogSuccessResponse =
         await promptAction.showDialog({
-          title: 'Select the file again',
-          message: `"${op.itemName}" was picked in a previous session. ` +
-            `Please select it again to retry the upload.`,
+          title: t('fb.reselectTitle'),
+          message: `"${op.itemName}" ${t('fb.reselectMsg')}`,
           buttons: [
-            { text: 'Cancel', color: '#666666' },
-            { text: 'Select file', color: '#0A5BD3' }
+            { text: t('common.cancel'), color: '#666666' },
+            { text: t('fb.reselectBtn'), color: '#0A5BD3' }
           ]
         });
       confirmed = result.index === 1;
@@ -1252,7 +1234,7 @@ export class FileBrowserViewModel {
     } catch (e) {
       const readable: string = formatError(e as Error);
       promptAction.showToast({
-        message: `Could not prepare file: ${readable}`
+        message: `${t('fb.couldNotPrepare')}: ${readable}`
       });
       return;
     }
@@ -1285,12 +1267,16 @@ export class FileBrowserViewModel {
       try { fs.unlinkSync(sandboxPath); } catch (_) { /* gone */ }
 
       await this.loadFolder(this.currentFolderId);
-      promptAction.showToast({ message: `Uploaded "${finalName}"` });
+      promptAction.showToast({
+        message: tNamed('fb.uploaded', new Map([['name', finalName]]))
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
       Logger.error(TAG, `reselect upload failed: ${readable}`);
       tracker.markFailed(freshId, readable);
-      promptAction.showToast({ message: `Upload failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.uploadFailed')}: ${readable}`
+      });
     }
   }
 
@@ -1356,7 +1342,7 @@ export class FileBrowserViewModel {
     const item: CloudItem = this.selectedItem;
 
     if (item.type === CloudItemType.FOLDER) {
-      promptAction.showToast({ message: 'Folders cannot be made available offline' });
+      promptAction.showToast({ message: t('fb.offlineFolder') });
       return;
     }
 
@@ -1429,12 +1415,16 @@ export class FileBrowserViewModel {
       }
 
       tracker.markSuccess(opId);
-      promptAction.showToast({ message: `"${item.name}" available offline` });
+      promptAction.showToast({
+        message: tNamed('fb.offlineAdded', new Map([['name', item.name]]))
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
       Logger.error(TAG, `saveForOffline failed: ${readable}`);
       tracker.markFailed(opId, readable);
-      promptAction.showToast({ message: `Offline download failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.offlineFailed')}: ${readable}`
+      });
     } finally {
       this.markDownloading(item.id, false);
     }
@@ -1461,7 +1451,9 @@ export class FileBrowserViewModel {
       next.splice(idx, 1);
       this.offlineIds = next;
     }
-    promptAction.showToast({ message: `"${item.name}" removed from offline` });
+    promptAction.showToast({
+      message: tNamed('fb.offlineRemoved', new Map([['name', item.name]]))
+    });
   }
 
   async openOfflineFile(item: CloudItem): Promise<void> {
@@ -1471,7 +1463,7 @@ export class FileBrowserViewModel {
     const record: OfflineFileRecord | null =
       await OfflineStore.getById(item.id);
     if (record === null) {
-      promptAction.showToast({ message: 'File is not available offline' });
+      promptAction.showToast({ message: t('fb.offlineMissing') });
       return;
     }
 
@@ -1485,7 +1477,7 @@ export class FileBrowserViewModel {
         next.splice(idx, 1);
         this.offlineIds = next;
       }
-      promptAction.showToast({ message: 'Offline file is no longer available' });
+      promptAction.showToast({ message: t('fb.offlineGone') });
       return;
     }
 
@@ -1504,7 +1496,9 @@ export class FileBrowserViewModel {
     } catch (e) {
       const readable: string = formatError(e as Error);
       Logger.error(TAG, `startAbility failed: ${readable}`);
-      promptAction.showToast({ message: `Cannot open file: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.cannotOpen')}: ${readable}`
+      });
     }
   }
 
@@ -1524,7 +1518,7 @@ export class FileBrowserViewModel {
     if (this.selectedItem === null || this.cloudProvider === null) return;
     const newName: string = this.renameText.trim();
     if (newName.length === 0) {
-      promptAction.showToast({ message: 'Name cannot be empty' });
+      promptAction.showToast({ message: t('fb.nameEmpty') });
       return;
     }
     if (newName === this.selectedItem.name) {
@@ -1542,10 +1536,12 @@ export class FileBrowserViewModel {
       c.id === targetId ? { id: c.id, name: newName } : c
       );
       await this.loadFolder(this.currentFolderId);
-      promptAction.showToast({ message: 'Renamed' });
+      promptAction.showToast({ message: t('fb.renamed') });
     } catch (e) {
       const readable: string = formatError(e as Error);
-      promptAction.showToast({ message: `Rename failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.renameFailed')}: ${readable}`
+      });
     } finally {
       this.isProcessing = false;
     }
@@ -1574,18 +1570,24 @@ export class FileBrowserViewModel {
     const hasFolder: boolean = items.some((it: CloudItem): boolean =>
     it.type === CloudItemType.FOLDER);
 
-    const title: string = count === 1 ? 'Delete' : `Delete ${count} items`;
-    const subject: string = count === 1 ? `"${items[0].name}"` : `${count} items`;
-    const extra: string = hasFolder
-      ? ' Folders and their contents will be deleted too.'
-      : '';
+    const title: string = count === 1
+      ? t('fb.deleteTitle')
+      : tNamed('fb.deleteTitleN', new Map([['n', `${count}`]]));
+
+    const subject: string = count === 1
+      ? `"${items[0].name}"`
+      : `${count}`;
+
+    const extra: string = hasFolder ? t('fb.deleteMsgFolderExtra') : '';
 
     promptAction.showDialog({
       title: title,
-      message: `Delete ${subject}?${extra} This cannot be undone.`,
+      message: count === 1
+        ? tNamed('fb.deleteMsg', new Map([['name', subject]])) + extra
+        : `${subject}${extra}`,
       buttons: [
-        { text: 'Cancel', color: '#666666' },
-        { text: 'Delete', color: '#D32F2F' }
+        { text: t('common.cancel'), color: '#666666' },
+        { text: t('fb.delete'), color: '#D32F2F' }
       ]
     })
       .then((r: promptAction.ShowDialogSuccessResponse) => {
@@ -1646,11 +1648,16 @@ export class FileBrowserViewModel {
     if (failed === 0) {
       promptAction.showToast({
         message: success === 1
-          ? `Deleted "${items[0].name}"`
-          : `Deleted ${success} items`
+          ? tNamed('fb.deleted', new Map([['name', items[0].name]]))
+          : tNamed('fb.deletedN', new Map([['n', `${success}`]]))
       });
     } else {
-      promptAction.showToast({ message: `Deleted ${success}, failed ${failed}` });
+      promptAction.showToast({
+        message: tNamed('fb.deletedMixed', new Map([
+          ['ok', `${success}`],
+          ['fail', `${failed}`]
+        ]))
+      });
     }
   }
 
@@ -1694,7 +1701,7 @@ export class FileBrowserViewModel {
         id: 'root',
         name: this.activeAccount !== null
           ? this.activeAccount.displayName
-          : 'Files'
+          : t('fb.files')
       }
     ];
     this.loadMovePickerFolder('root');
@@ -1711,16 +1718,16 @@ export class FileBrowserViewModel {
   pickerTitle(): string {
     if (this.pickerItems.length > 1) {
       return this.pickerMode === 'copy'
-        ? `Copy ${this.pickerItems.length} items to`
-        : `Move ${this.pickerItems.length} items to`;
+        ? `${t('fb.copy')} ${this.pickerItems.length}`
+        : `${t('fb.move')} ${this.pickerItems.length}`;
     }
     return this.pickerMode === 'copy'
-      ? 'Pick the destination to copy to'
-      : 'Pick the destination';
+      ? t('fb.pickDestCopy')
+      : t('fb.pickDestMove');
   }
 
   pickerConfirmLabel(): string {
-    return this.pickerMode === 'copy' ? 'Copy here' : 'Move here';
+    return this.pickerMode === 'copy' ? t('fb.copyHere') : t('fb.moveHere');
   }
 
   canConfirmHere(): boolean {
@@ -1781,7 +1788,7 @@ export class FileBrowserViewModel {
     const mode: string = this.pickerMode;
 
     if (mode === 'move' && targetId === this.currentFolderId) {
-      promptAction.showToast({ message: 'Items are already in this folder' });
+      promptAction.showToast({ message: t('fb.alreadyHere') });
       return;
     }
 
@@ -1808,7 +1815,7 @@ export class FileBrowserViewModel {
     if (conflicts.length > 0) {
       resolveMode = await this.askBatchConflictChoice(conflicts);
       if (resolveMode === 'skip' && conflicts.length === items.length) {
-        promptAction.showToast({ message: 'Move cancelled' });
+        promptAction.showToast({ message: t('fb.moveCancelled') });
         return;
       }
     }
@@ -1867,11 +1874,16 @@ export class FileBrowserViewModel {
     if (failed === 0) {
       promptAction.showToast({
         message: success === 1
-          ? `Moved "${items[0].name}"`
-          : `Moved ${success} items`
+          ? tNamed('fb.moved', new Map([['name', items[0].name]]))
+          : tNamed('fb.movedN', new Map([['n', `${success}`]]))
       });
     } else {
-      promptAction.showToast({ message: `Moved ${success}, failed ${failed}` });
+      promptAction.showToast({
+        message: tNamed('fb.movedMixed', new Map([
+          ['ok', `${success}`],
+          ['fail', `${failed}`]
+        ]))
+      });
     }
   }
 
@@ -1888,7 +1900,7 @@ export class FileBrowserViewModel {
     if (conflicts.length > 0) {
       resolveMode = await this.askBatchConflictChoice(conflicts);
       if (resolveMode === 'skip' && conflicts.length === items.length) {
-        promptAction.showToast({ message: 'Copy cancelled' });
+        promptAction.showToast({ message: t('fb.copyCancelled') });
         return;
       }
     }
@@ -1958,11 +1970,16 @@ export class FileBrowserViewModel {
     if (failed === 0) {
       promptAction.showToast({
         message: success === 1
-          ? `Copied "${items[0].name}"`
-          : `Copied ${success} items`
+          ? tNamed('fb.copied', new Map([['name', items[0].name]]))
+          : tNamed('fb.copiedN', new Map([['n', `${success}`]]))
       });
     } else {
-      promptAction.showToast({ message: `Copied ${success}, failed ${failed}` });
+      promptAction.showToast({
+        message: tNamed('fb.copiedMixed', new Map([
+          ['ok', `${success}`],
+          ['fail', `${failed}`]
+        ]))
+      });
     }
   }
 
@@ -2002,7 +2019,7 @@ export class FileBrowserViewModel {
       }
     }
 
-    throw new Error('Copy is taking longer than expected.');
+    throw new Error(t('fb.copyTakingLong'));
   }
 
   private sleep(ms: number): Promise<void> {
@@ -2039,16 +2056,16 @@ export class FileBrowserViewModel {
     return new Promise<string>((resolve: (v: string) => void) => {
       const count: number = conflicts.length;
       const preview: string = count === 1
-        ? `"${conflicts[0].name}" already exists in the destination.`
-        : `${count} items already exist in the destination.`;
+        ? tNamed('fb.conflictOne', new Map([['name', conflicts[0].name]]))
+        : tNamed('fb.conflictMany', new Map([['n', `${count}`]]));
 
       promptAction.showDialog({
-        title: 'Name conflict',
-        message: `${preview} What would you like to do?`,
+        title: t('fb.conflictTitle'),
+        message: `${preview} ${t('fb.conflictPrompt')}`,
         buttons: [
-          { text: 'Skip All', color: '#666666' },
-          { text: 'Keep Both', color: '#0078D4' },
-          { text: 'Replace All', color: '#D32F2F' }
+          { text: t('fb.conflictSkip'), color: '#666666' },
+          { text: t('fb.conflictKeep'), color: '#0078D4' },
+          { text: t('fb.conflictReplace'), color: '#D32F2F' }
         ]
       })
         .then((r: promptAction.ShowDialogSuccessResponse) => {
@@ -2112,7 +2129,7 @@ export class FileBrowserViewModel {
     if (this.cloudProvider === null) return;
     const name: string = this.newFolderName.trim();
     if (name.length === 0) {
-      promptAction.showToast({ message: 'Folder name cannot be empty' });
+      promptAction.showToast({ message: t('fb.folderNameEmpty') });
       return;
     }
 
@@ -2127,10 +2144,14 @@ export class FileBrowserViewModel {
       } else {
         await this.loadMovePickerFolder(this.createFolderTargetId);
       }
-      promptAction.showToast({ message: `Folder "${name}" created` });
+      promptAction.showToast({
+        message: tNamed('fb.folderCreated', new Map([['name', name]]))
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
-      promptAction.showToast({ message: `Create failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.createFailed')}: ${readable}`
+      });
     } finally {
       this.isCreatingFolder = false;
     }
@@ -2148,7 +2169,7 @@ export class FileBrowserViewModel {
     if (item.type === CloudItemType.FOLDER) {
       this.closeActionsSheet();
       if (!FOLDER_DOWNLOAD_ENABLED) {
-        promptAction.showToast({ message: 'Folders cannot be downloaded' });
+        promptAction.showToast({ message: t('fb.foldersCannotDownload') });
         return;
       }
       await this.downloadFolderAsZip(item);
@@ -2180,10 +2201,14 @@ export class FileBrowserViewModel {
     try {
       const info: DownloadInfo = await this.cloudProvider.getDownloadInfo(item.id);
       await this.downloadViaHttp(info, saveUri, item.name, item.id, opId);
-      promptAction.showToast({ message: `Downloaded: ${item.name}` });
+      promptAction.showToast({
+        message: `${t('fb.downloaded')}: ${item.name}`
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
-      promptAction.showToast({ message: `Download failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.downloadFailed')}: ${readable}`
+      });
     }
   }
 
@@ -2206,8 +2231,8 @@ export class FileBrowserViewModel {
       if (!FOLDER_DOWNLOAD_ENABLED) {
         promptAction.showToast({
           message: folderCount === 1
-            ? 'Folders cannot be downloaded'
-            : 'Folders cannot be downloaded — deselect them and try again'
+            ? t('fb.foldersCannotDownload')
+            : t('fb.deselectFolders')
         });
         return;
       }
@@ -2217,7 +2242,7 @@ export class FileBrowserViewModel {
     }
 
     if (files.length === 0) {
-      promptAction.showToast({ message: 'Select at least one file to download' });
+      promptAction.showToast({ message: t('fb.selectAtLeastOne') });
       return;
     }
 
@@ -2279,9 +2304,16 @@ export class FileBrowserViewModel {
     }
 
     if (failed === 0) {
-      promptAction.showToast({ message: `Downloaded ${success} files` });
+      promptAction.showToast({
+        message: tNamed('fb.downloadedN', new Map([['n', `${success}`]]))
+      });
     } else {
-      promptAction.showToast({ message: `Downloaded ${success}, failed ${failed}` });
+      promptAction.showToast({
+        message: tNamed('fb.downloadedMixed', new Map([
+          ['ok', `${success}`],
+          ['fail', `${failed}`]
+        ]))
+      });
     }
   }
 
@@ -2458,7 +2490,7 @@ export class FileBrowserViewModel {
   }
 
   // ===========================================================================
-  // Download — folder ZIP (preserved for future re-enable)
+  // Download — folder ZIP
   // ===========================================================================
 
   private async downloadFolderAsZip(folder: CloudItem): Promise<void> {
@@ -2473,7 +2505,7 @@ export class FileBrowserViewModel {
     await this.collectFolderTasks(folder, folder.name, tasks, folderPaths, counter);
 
     if (tasks.length === 0 && folderPaths.length === 0) {
-      promptAction.showToast({ message: 'Folder is empty' });
+      promptAction.showToast({ message: t('fb.folderEmpty') });
       return;
     }
 
@@ -2522,7 +2554,7 @@ export class FileBrowserViewModel {
     }
 
     if (success === 0) {
-      promptAction.showToast({ message: 'Failed to download any files' });
+      promptAction.showToast({ message: t('fb.failedDownloadAny') });
       this.removeDirRecursive(stagingDir);
       return;
     }
@@ -2536,10 +2568,14 @@ export class FileBrowserViewModel {
       };
       await zlib.compressFile(stagingDir, zipPath, options);
       await this.copySandboxToDestination(zipPath, destUri, zipName);
-      promptAction.showToast({ message: `Downloaded "${zipName}"` });
+      promptAction.showToast({
+        message: `${t('fb.downloaded')} "${zipName}"`
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
-      promptAction.showToast({ message: `Failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.failed')}: ${readable}`
+      });
     } finally {
       this.removeDirRecursive(stagingDir);
       try { fs.accessSync(zipPath); fs.unlinkSync(zipPath); } catch (_) { /* ignore */ }
@@ -2573,7 +2609,7 @@ export class FileBrowserViewModel {
     }
 
     if (tasks.length === 0) {
-      promptAction.showToast({ message: 'Nothing to download' });
+      promptAction.showToast({ message: t('fb.nothingToDownload') });
       return;
     }
 
@@ -2622,7 +2658,7 @@ export class FileBrowserViewModel {
     }
 
     if (success === 0) {
-      promptAction.showToast({ message: 'Failed to download any files' });
+      promptAction.showToast({ message: t('fb.failedDownloadAny') });
       this.removeDirRecursive(stagingDir);
       return;
     }
@@ -2636,10 +2672,14 @@ export class FileBrowserViewModel {
       };
       await zlib.compressFile(stagingDir, zipPath, options);
       await this.copySandboxToDestination(zipPath, destUri, zipName);
-      promptAction.showToast({ message: `Downloaded ${success} files as ZIP` });
+      promptAction.showToast({
+        message: tNamed('fb.downloadedAsZip', new Map([['n', `${success}`]]))
+      });
     } catch (e) {
       const readable: string = formatError(e as Error);
-      promptAction.showToast({ message: `Failed: ${readable}` });
+      promptAction.showToast({
+        message: `${t('fb.failed')}: ${readable}`
+      });
     } finally {
       this.removeDirRecursive(stagingDir);
       try { fs.accessSync(zipPath); fs.unlinkSync(zipPath); } catch (_) { /* ignore */ }
@@ -3001,9 +3041,9 @@ export class FileBrowserViewModel {
   }
 
   static providerLabel(type: CloudProviderType): string {
-    if (type === CloudProviderType.ONEDRIVE) return 'OneDrive';
-    if (type === CloudProviderType.GOOGLE_DRIVE) return 'Google Drive';
-    if (type === CloudProviderType.DROPBOX) return 'Dropbox';
-    return 'Cloud';
+    if (type === CloudProviderType.ONEDRIVE) return t('onb.provider.onedrive');
+    if (type === CloudProviderType.GOOGLE_DRIVE) return t('onb.provider.google');
+    if (type === CloudProviderType.DROPBOX) return t('onb.provider.dropbox');
+    return t('onb.provider');
   }
 }

@@ -1,20 +1,26 @@
 import { webview } from '@kit.ArkWeb';
+import { router } from '@kit.ArkUI';
 import {
   OnboardingViewModel,
   ProviderOption,
   STEP_SELECT_PROVIDER,
-  MOBILE_USER_AGENT,
-  STEP_AUTHENTICATE
+  MOBILE_USER_AGENT
 } from '../viewmodels/OnboardingViewModel';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeColors } from '../core/theme/ThemeColors';
+import { t } from '../core/i18n/I18n';
+import { Logger } from '../utils/Logger';
+
+const TAG: string = 'OnboardingPage';
 
 @Entry
 @Component
 struct OnboardingPage {
   @State vm: OnboardingViewModel = new OnboardingViewModel();
   @State private theme: ThemeColors = ThemeManager.get().colors();
+
+  @StorageLink('languageVersion') langVersion: number = 0;
 
   private controller: webview.WebviewController = new webview.WebviewController();
 
@@ -31,40 +37,26 @@ struct OnboardingPage {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
   }
 
-  /**
-   * Called before the system back gesture/button pops the page.
-   *
-   * During the WebView step, back should first consume the Web's own
-   * history (so users can navigate back through the provider's pages).
-   * If there is no Web history left, return to the provider picker
-   * instead of popping the whole OnboardingPage — otherwise the user
-   * lands on the account selection with no way to retry.
-   *
-   * Returning false on the provider-selection step lets the default
-   * navigation behaviour pop the page as usual.
-   */
-  onBackPress(): boolean {
-    if (this.vm.step === STEP_AUTHENTICATE) {
-      if (this.controller.accessBackward()) {
-        this.controller.backward();
-        return true;
-      }
-      this.vm.onBack();
-      return true;
-    }
-    return false;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Theme → WebView dark-mode mapping
-  //
-  // We compute the WebView's dark mode from our own ThemeManager rather
-  // than letting the WebView follow the system, so it stays consistent
-  // with the app even when the user has overridden the theme in Settings.
-  // ---------------------------------------------------------------------------
-
   private webDarkMode(): WebDarkMode {
     return this.theme.isDark ? WebDarkMode.On : WebDarkMode.Off;
+  }
+
+  /**
+   * Called before the system back gesture/button pops the page.
+   * During the WebView step, back first consumes the Web's own
+   * history; if none remains, return to the provider picker instead
+   * of popping the whole OnboardingPage.
+   */
+  onBackPress(): boolean {
+    if (this.vm.step === STEP_SELECT_PROVIDER) {
+      return false;
+    }
+    if (this.controller.accessBackward()) {
+      this.controller.backward();
+      return true;
+    }
+    this.vm.onBack();
+    return true;
   }
 
   build() {
@@ -83,16 +75,12 @@ struct OnboardingPage {
     .backgroundColor(this.theme.background)
   }
 
-  // ---------------------------------------------------------------------------
-  // Header
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildHeader() {
     Column({ space: 8 }) {
       Row() {
         if (this.vm.isAddMode && this.vm.step === STEP_SELECT_PROVIDER) {
-          Button('‹ Cancel')
+          Button('‹ ' + t('common.cancel'))
             .backgroundColor(Color.Transparent)
             .fontColor(this.theme.primary)
             .fontSize(15)
@@ -103,14 +91,14 @@ struct OnboardingPage {
       }
       .width('100%')
 
-      Text(this.vm.isAddMode ? 'Add Account' : 'Welcome to CLDrive')
+      Text(this.vm.isAddMode ? t('onb.addAccount') : t('onb.welcome'))
         .fontSize(28)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.theme.textPrimary)
 
       Text(this.vm.step === STEP_SELECT_PROVIDER
-        ? 'Choose a cloud provider to get started'
-        : `Sign in to ${this.vm.providerLabel(this.vm.selectedProvider)}`)
+        ? t('onb.chooseProvider')
+        : `${t('onb.signInTo')} ${this.vm.providerLabel(this.vm.selectedProvider)}`)
         .fontSize(14)
         .fontColor(this.theme.textSecondary)
     }
@@ -118,10 +106,6 @@ struct OnboardingPage {
     .alignItems(HorizontalAlign.Center)
     .margin({ top: 24, bottom: 32 })
   }
-
-  // ---------------------------------------------------------------------------
-  // Step 1 — provider selection
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildProviderSelection() {
@@ -170,15 +154,11 @@ struct OnboardingPage {
     })
   }
 
-  // ---------------------------------------------------------------------------
-  // Step 2 — WebView authentication
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildAuthView() {
     Column() {
       Row() {
-        Button('‹ Back')
+        Button('‹ ' + t('priv.goBack'))
           .backgroundColor(Color.Transparent)
           .fontColor(this.theme.primary)
           .fontSize(15)
@@ -190,38 +170,27 @@ struct OnboardingPage {
       .margin({ bottom: 12 })
 
       if (this.vm.authUrl.length > 0) {
-        // The WebView inherits the app's theme via darkMode(). Microsoft
-        // and Google login pages both honour `prefers-color-scheme`, so
-        // the OAuth UI matches the rest of the app.
         Web({ src: this.vm.authUrl, controller: this.controller })
           .userAgent(MOBILE_USER_AGENT)
           .darkMode(this.webDarkMode())
-          // forceDarkAccess is disabled: we trust the providers' own
-          // dark-mode styling. Enabling it would force-dark their pages
-          // and can break login form legibility.
           .forceDarkAccess(false)
           .onLoadIntercept((event) => {
+            if (event === undefined) return false;
             const url: string = event.data.getRequestUrl();
 
-            // OneDrive redirect
             if (url.startsWith('https://cl.drive/oauth')) {
               this.vm.handleRedirect(url);
               return true;
             }
-
-            // Google Drive loopback redirect
             if (url.startsWith('http://127.0.0.1:8080/oauth2redirect')
               || url.startsWith('http://localhost:8080/oauth2redirect')) {
               this.vm.handleRedirect(url);
               return true;
             }
-
-            // Dropbox redirect
             if (url.startsWith('https://cl.drive/dropbox-oauth')) {
               this.vm.handleRedirect(url);
               return true;
             }
-
             return false;
           })
           .domStorageAccess(true)
@@ -232,13 +201,11 @@ struct OnboardingPage {
           .width('100%')
           .layoutWeight(1)
           .borderRadius(12)
-          // Match the WebView container to the theme so no white flash
-          // appears before the OAuth page renders.
           .backgroundColor(this.theme.surface)
       } else {
         Column({ space: 12 }) {
           LoadingProgress().width(36).height(36).color(this.theme.primary)
-          Text('Preparing sign-in...')
+          Text(t('onb.preparing'))
             .fontSize(13)
             .fontColor(this.theme.textSecondary)
         }
@@ -250,7 +217,7 @@ struct OnboardingPage {
       if (this.vm.isLoading) {
         Row({ space: 12 }) {
           LoadingProgress().width(20).height(20).color(this.theme.primary)
-          Text('Completing sign-in...')
+          Text(t('onb.completing'))
             .fontSize(14)
             .fontColor(this.theme.textSecondary)
         }

@@ -3,6 +3,9 @@ import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeMode } from '../core/theme/ThemeMode';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { UiPrefs } from '../core/settings/UiPrefs';
+import { LanguageManager } from '../core/i18n/LanguageManager';
+import { LanguageOption, LANGUAGES, LangCode, languageByCode } from '../core/i18n/Language';
+import { t } from '../core/i18n/I18n';
 import { OfflineStore, CacheInfo } from '../core/services/OfflineStore';
 import { Logger } from '../utils/Logger';
 import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
@@ -12,8 +15,8 @@ const TAG: string = 'SettingsPage';
 
 interface ThemeOption {
   mode: ThemeMode;
-  label: string;
-  subtitle: string;
+  labelKey: string;
+  subtitleKey: string;
   icon: string;
 }
 
@@ -24,36 +27,38 @@ struct SettingsPage {
   @State private currentMode: ThemeMode = ThemeManager.get().getPreference();
   @State private appearanceExpanded: boolean = true;
 
-  // ---- Collapsing header ----
   @State private headerCollapsed: boolean = false;
 
-  // ---- UI customization ----
   @State private collapseSidebarByDefault: boolean = true;
   @State private uiPrefsLoaded: boolean = false;
 
-  // ---- Cache state ----
+  @State private currentLang: LangCode = 'en';
+  @State private langPickerOpen: boolean = false;
+
   @State private cacheFileCount: number = 0;
   @State private cacheTotalBytes: number = 0;
   @State private cacheLoading: boolean = true;
   @State private cacheClearing: boolean = false;
 
+  @StorageLink('languageVersion') langVersion: number = 0;
+
   private readonly options: ThemeOption[] = [
     {
       mode: ThemeMode.LIGHT,
-      label: 'Light',
-      subtitle: 'Always use the light theme',
+      labelKey: 'set.theme.light',
+      subtitleKey: 'set.theme.lightSub',
       icon: '☀'
     },
     {
       mode: ThemeMode.DARK,
-      label: 'Dark',
-      subtitle: 'Always use the dark theme',
+      labelKey: 'set.theme.dark',
+      subtitleKey: 'set.theme.darkSub',
       icon: '☾'
     },
     {
       mode: ThemeMode.SYSTEM,
-      label: 'Use system settings',
-      subtitle: 'Follow your device theme',
+      labelKey: 'set.theme.system',
+      subtitleKey: 'set.theme.systemSub',
       icon: '⚙'
     }
   ];
@@ -65,6 +70,7 @@ struct SettingsPage {
 
   aboutToAppear(): void {
     ThemeManager.get().subscribe(this.onThemeChange);
+    this.currentLang = LanguageManager.get();
     this.loadCacheInfo();
     this.loadUiPrefs();
   }
@@ -102,11 +108,11 @@ struct SettingsPage {
     if (this.cacheFileCount === 0) return;
 
     promptAction.showDialog({
-      title: 'Clear offline cache?',
-      message: `${this.cacheFileCount} file${this.cacheFileCount === 1 ? '' : 's'} (${SettingsPage.formatSize(this.cacheTotalBytes)}) will be deleted. Files marked offline will need to be re-downloaded to open offline again.`,
+      title: t('set.cache.confirm'),
+      message: `${this.cacheFileCount} ${t('set.cache.multi')} (${SettingsPage.formatSize(this.cacheTotalBytes)})`,
       buttons: [
-        { text: 'Cancel', color: '#666666' },
-        { text: 'Clear', color: '#D32F2F' }
+        { text: t('common.cancel'), color: '#666666' },
+        { text: t('set.cache.clear'), color: '#D32F2F' }
       ]
     })
       .then(async (r: promptAction.ShowDialogSuccessResponse) => {
@@ -117,11 +123,13 @@ struct SettingsPage {
           await OfflineStore.clearAll();
           this.cacheFileCount = 0;
           this.cacheTotalBytes = 0;
-          promptAction.showToast({ message: 'Cache cleared' });
+          promptAction.showToast({ message: t('set.cache.cleared') });
         } catch (e) {
           const err: Error = e as Error;
           Logger.error(TAG, `clearAll failed: ${err.message}`);
-          promptAction.showToast({ message: `Failed: ${err.message}` });
+          promptAction.showToast({
+            message: `${t('set.cache.failed')}: ${err.message}`
+          });
         } finally {
           this.cacheClearing = false;
         }
@@ -139,12 +147,12 @@ struct SettingsPage {
   }
 
   private cacheSummary(): string {
-    if (this.cacheLoading) return 'Calculating...';
-    if (this.cacheFileCount === 0) return 'No files cached';
+    if (this.cacheLoading) return t('set.cache.calc');
+    if (this.cacheFileCount === 0) return t('set.cache.none');
     const sizeStr: string = SettingsPage.formatSize(this.cacheTotalBytes);
     return this.cacheFileCount === 1
-      ? `1 file · ${sizeStr}`
-      : `${this.cacheFileCount} files · ${sizeStr}`;
+      ? `${t('set.cache.single')} · ${sizeStr}`
+      : `${this.cacheFileCount} ${t('set.cache.multi')} · ${sizeStr}`;
   }
 
   private versionLabel(): string {
@@ -157,91 +165,121 @@ struct SettingsPage {
     return info.versionCode.toString();
   }
 
+  private currentModeLabel(): string {
+    if (this.currentMode === ThemeMode.LIGHT) return t('set.theme.light');
+    if (this.currentMode === ThemeMode.DARK) return t('set.theme.dark');
+    return t('set.theme.following');
+  }
+
   build() {
-    Column() {
-      this.buildHeader()
+    Stack() {
+      Column() {
+        this.buildHeader()
 
-      Scroll() {
-        Column({ space: 24 }) {
-          // ---- Appearance ----
-          this.buildSectionLabel('APPEARANCE')
+        Scroll() {
+          Column({ space: 24 }) {
+            // ---- Appearance ----
+            this.buildSectionLabel(t('set.section.appear'))
 
-          Column() {
-            this.buildAppearanceHeader()
-            if (this.appearanceExpanded) {
-              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-              this.buildOptionRow(this.options[0])
-              this.buildOptionRow(this.options[1])
-              this.buildOptionRow(this.options[2])
+            Column() {
+              this.buildAppearanceHeader()
+              if (this.appearanceExpanded) {
+                Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+                this.buildOptionRow(this.options[0])
+                this.buildOptionRow(this.options[1])
+                this.buildOptionRow(this.options[2])
+              }
             }
+            .width('100%')
+            .backgroundColor(this.theme.surface)
+            .borderRadius(14)
+
+            // ---- UI Customization ----
+            this.buildSectionLabel(t('set.section.ui'))
+
+            Column() {
+              this.buildSidebarCollapseRow()
+            }
+            .width('100%')
+            .backgroundColor(this.theme.surface)
+            .borderRadius(14)
+
+            // ---- Language ----
+            this.buildSectionLabel(t('set.section.lang'))
+
+            Column() {
+              this.buildLanguageRow()
+            }
+            .width('100%')
+            .backgroundColor(this.theme.surface)
+            .borderRadius(14)
+
+            // ---- Storage ----
+            this.buildSectionLabel(t('set.section.store'))
+
+            Column() {
+              this.buildStorageHeader()
+              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+              this.buildClearCacheRow()
+            }
+            .width('100%')
+            .backgroundColor(this.theme.surface)
+            .borderRadius(14)
+
+            // ---- About ----
+            this.buildSectionLabel(t('set.section.about'))
+
+            Column() {
+              this.buildAboutRow(t('set.version'), this.versionLabel())
+              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+              this.buildAboutRow(t('set.build'), this.buildNumber())
+              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+              this.buildAboutRow(t('set.provider'), t('set.providerVal'))
+              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+              this.buildAboutRow(t('set.cloud'), t('set.cloudVal'))
+              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+              this.buildPrivacyPolicyRow()
+            }
+            .width('100%')
+            .backgroundColor(this.theme.surface)
+            .borderRadius(14)
+
+            Row().height(32)
           }
           .width('100%')
-          .backgroundColor(this.theme.surface)
-          .borderRadius(14)
-
-          // ---- UI Customization ----
-          this.buildSectionLabel('UI CUSTOMIZATION')
-
-          Column() {
-            this.buildSidebarCollapseRow()
+          .padding({ left: 16, right: 16, top: 8 })
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .scrollBar(BarState.Off)
+        .onScroll((xOffset: number, yOffset: number) => {
+          const shouldCollapse: boolean = yOffset > 16;
+          if (shouldCollapse !== this.headerCollapsed) {
+            this.headerCollapsed = shouldCollapse;
           }
-          .width('100%')
-          .backgroundColor(this.theme.surface)
-          .borderRadius(14)
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.theme.background)
 
-          // ---- Storage ----
-          this.buildSectionLabel('STORAGE')
-
-          Column() {
-            this.buildStorageHeader()
-            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildClearCacheRow()
-          }
-          .width('100%')
-          .backgroundColor(this.theme.surface)
-          .borderRadius(14)
-
-          // ---- About ----
-          this.buildSectionLabel('ABOUT')
-
-          Column() {
-            this.buildAboutRow('Version', this.versionLabel())
-            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Build', this.buildNumber())
-            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Provider', 'OneDrive · Drive · Dropbox')
-            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Cloud', 'Graph v1.0 · Drive v3 · Dropbox v2')
-            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildPrivacyPolicyRow()
-          }
-          .width('100%')
-          .backgroundColor(this.theme.surface)
-          .borderRadius(14)
-
-          Row().height(32)
+      if (this.langPickerOpen) {
+        Column() {
+          Column()
+            .width('100%')
+            .layoutWeight(1)
+            .backgroundColor(this.theme.overlay)
+            .onClick(() => { this.langPickerOpen = false; })
+          this.buildLanguagePickerSheet()
         }
         .width('100%')
-        .padding({ left: 16, right: 16, top: 8 })
+        .height('100%')
       }
-      .layoutWeight(1)
-      .width('100%')
-      .scrollBar(BarState.Off)
-      .onScroll((xOffset: number, yOffset: number) => {
-        const shouldCollapse: boolean = yOffset > 16;
-        if (shouldCollapse !== this.headerCollapsed) {
-          this.headerCollapsed = shouldCollapse;
-        }
-      })
     }
     .width('100%')
     .height('100%')
     .backgroundColor(this.theme.background)
   }
-
-  // ---------------------------------------------------------------------------
-  // Header / section label
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildHeader() {
@@ -254,7 +292,7 @@ struct SettingsPage {
         .onClick(() => { router.back(); })
 
       if (!this.headerCollapsed) {
-        Text('Settings')
+        Text(t('set.title'))
           .fontSize(22)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.theme.textPrimary)
@@ -293,10 +331,6 @@ struct SettingsPage {
       .textAlign(TextAlign.Start)
   }
 
-  // ---------------------------------------------------------------------------
-  // Appearance section
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildAppearanceHeader() {
     Row({ space: 14 }) {
@@ -311,7 +345,7 @@ struct SettingsPage {
       .alignItems(HorizontalAlign.Center)
 
       Column({ space: 2 }) {
-        Text('Dark mode')
+        Text(t('set.darkMode'))
           .fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor(this.theme.textPrimary)
           .textAlign(TextAlign.Start).width('100%')
@@ -332,12 +366,6 @@ struct SettingsPage {
     .onClick(() => { this.appearanceExpanded = !this.appearanceExpanded; })
   }
 
-  private currentModeLabel(): string {
-    if (this.currentMode === ThemeMode.LIGHT) return 'Light';
-    if (this.currentMode === ThemeMode.DARK) return 'Dark';
-    return 'Following system';
-  }
-
   @Builder
   buildOptionRow(option: ThemeOption) {
     Row({ space: 14 }) {
@@ -346,10 +374,10 @@ struct SettingsPage {
         .width(36).height(36).textAlign(TextAlign.Center)
 
       Column({ space: 2 }) {
-        Text(option.label)
+        Text(t(option.labelKey))
           .fontSize(15).fontColor(this.theme.textPrimary)
           .textAlign(TextAlign.Start).width('100%')
-        Text(option.subtitle)
+        Text(t(option.subtitleKey))
           .fontSize(12).fontColor(this.theme.textSecondary)
           .textAlign(TextAlign.Start).width('100%')
       }
@@ -384,16 +412,11 @@ struct SettingsPage {
     })
   }
 
-  // ---------------------------------------------------------------------------
-  // UI customization section
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildSidebarCollapseRow() {
     Row({ space: 14 }) {
       Column() {
-        Text('▸')
-          .fontSize(18).fontColor(this.theme.primary)
+        Text('▸').fontSize(18).fontColor(this.theme.primary)
       }
       .width(36).height(36).borderRadius(10)
       .backgroundColor(this.theme.primarySoft)
@@ -401,10 +424,10 @@ struct SettingsPage {
       .alignItems(HorizontalAlign.Center)
 
       Column({ space: 2 }) {
-        Text('Collapse sidebar groups')
+        Text(t('set.collapse'))
           .fontSize(15).fontColor(this.theme.textPrimary)
           .textAlign(TextAlign.Start).width('100%')
-        Text('Provider folders start collapsed each launch')
+        Text(t('set.collapseSub'))
           .fontSize(12).fontColor(this.theme.textSecondary)
           .textAlign(TextAlign.Start).width('100%')
       }
@@ -431,9 +454,115 @@ struct SettingsPage {
     .alignItems(VerticalAlign.Center)
   }
 
-  // ---------------------------------------------------------------------------
-  // Storage section
-  // ---------------------------------------------------------------------------
+  @Builder
+  buildLanguageRow() {
+    Row({ space: 14 }) {
+      Column() {
+        Text('🌐').fontSize(18).fontColor(this.theme.primary)
+      }
+      .width(36).height(36).borderRadius(10)
+      .backgroundColor(this.theme.primarySoft)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+
+      Column({ space: 2 }) {
+        Text(t('set.lang'))
+          .fontSize(15).fontColor(this.theme.textPrimary)
+          .textAlign(TextAlign.Start).width('100%')
+        Text(languageByCode(this.currentLang).nativeName)
+          .fontSize(12).fontColor(this.theme.textSecondary)
+          .textAlign(TextAlign.Start).width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Text('›').fontSize(20).fontColor(this.theme.textTertiary)
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 14, bottom: 14 })
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => { this.langPickerOpen = true; })
+  }
+
+  @Builder
+  buildLanguagePickerSheet() {
+    Column() {
+      Row()
+        .width(40).height(4).borderRadius(2)
+        .backgroundColor(this.theme.border)
+        .margin({ top: 8, bottom: 12 })
+
+      Row() {
+        Column({ space: 2 }) {
+          Text(t('lang.title'))
+            .fontSize(18).fontWeight(FontWeight.Bold)
+            .fontColor(this.theme.textPrimary)
+            .textAlign(TextAlign.Start).width('100%')
+          Text(t('lang.subtitle'))
+            .fontSize(11).fontColor(this.theme.textTertiary)
+            .textAlign(TextAlign.Start).width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        Text('✕')
+          .fontSize(18).fontColor(this.theme.textSecondary)
+          .width(32).height(32).textAlign(TextAlign.Center)
+          .onClick(() => { this.langPickerOpen = false; })
+      }
+      .width('100%')
+      .padding({ left: 20, right: 12, bottom: 12 })
+      .alignItems(VerticalAlign.Center)
+
+      Divider().color(this.theme.divider)
+
+      List({ space: 1 }) {
+        ForEach(LANGUAGES, (lang: LanguageOption) => {
+          ListItem() {
+            Row({ space: 14 }) {
+              Column({ space: 3 }) {
+                Text(lang.englishName)
+                  .fontSize(15).fontColor(this.theme.textPrimary)
+                  .textAlign(TextAlign.Start).width('100%')
+                Text(lang.nativeName)
+                  .fontSize(12).fontColor(this.theme.textSecondary)
+                  .textAlign(TextAlign.Start).width('100%')
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+
+              if (this.currentLang === lang.code) {
+                Text('✓')
+                  .fontSize(18)
+                  .fontColor(this.theme.primary)
+                  .fontWeight(FontWeight.Bold)
+              }
+            }
+            .width('100%')
+            .padding({ left: 20, right: 20, top: 12, bottom: 12 })
+            .backgroundColor(this.currentLang === lang.code
+              ? this.theme.chipSelectedBg : Color.Transparent)
+            .alignItems(VerticalAlign.Center)
+            .onClick(() => {
+              this.currentLang = lang.code;
+              LanguageManager.set(lang.code)
+                .then(() => { this.langPickerOpen = false; })
+                .catch((e: Error) => {
+                  Logger.error(TAG, `set language failed: ${e.message}`);
+                });
+            })
+          }
+        }, (lang: LanguageOption) => lang.code)
+      }
+      .width('100%')
+      .constraintSize({ maxHeight: 480 })
+      .divider({ strokeWidth: 1, color: this.theme.divider })
+    }
+    .width('100%')
+    .backgroundColor(this.theme.surface)
+    .borderRadius({ topLeft: 20, topRight: 20 })
+    .shadow({ radius: 20, color: '#22000000', offsetX: 0, offsetY: -4 })
+  }
 
   @Builder
   buildStorageHeader() {
@@ -447,7 +576,7 @@ struct SettingsPage {
       .alignItems(HorizontalAlign.Center)
 
       Column({ space: 2 }) {
-        Text('Offline files')
+        Text(t('set.offline'))
           .fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor(this.theme.textPrimary)
           .textAlign(TextAlign.Start).width('100%')
@@ -474,7 +603,7 @@ struct SettingsPage {
         .fontColor(this.cacheFileCount > 0 ? this.theme.error : this.theme.textTertiary)
         .width(36).height(36).textAlign(TextAlign.Center)
 
-      Text('Clear cache')
+      Text(t('set.cache.clear'))
         .fontSize(15)
         .fontColor(this.cacheFileCount > 0 ? this.theme.error : this.theme.textTertiary)
         .layoutWeight(1)
@@ -491,10 +620,6 @@ struct SettingsPage {
       this.onClearCache();
     })
   }
-
-  // ---------------------------------------------------------------------------
-  // About rows
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildAboutRow(label: string, value: string) {
@@ -518,19 +643,10 @@ struct SettingsPage {
   @Builder
   buildPrivacyPolicyRow() {
     Row({ space: 12 }) {
-      Text('🔒')
-        .fontSize(16)
-        .width(24)
-        .textAlign(TextAlign.Center)
-
-      Text('Privacy Policy')
-        .fontSize(15)
-        .fontColor(this.theme.primary)
-        .layoutWeight(1)
-
-      Text('›')
-        .fontSize(20)
-        .fontColor(this.theme.primary)
+      Text('🔒').fontSize(16).width(24).textAlign(TextAlign.Center)
+      Text(t('set.privacy'))
+        .fontSize(15).fontColor(this.theme.primary).layoutWeight(1)
+      Text('›').fontSize(20).fontColor(this.theme.primary)
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 16 })

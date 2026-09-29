@@ -5,6 +5,11 @@ import { CloudProviderType } from '../core/models/CloudProviderType';
 import { ICloudProvider } from '../core/interfaces/ICloudProvider';
 import { CloudItem } from '../core/models/CloudItem';
 import { CloudItemType } from '../core/models/CloudItemType';
+import { AccountInfo } from '../core/models/AccountInfo';
+import { AuthManager } from '../core/auth/AuthManager';
+import { ThemeManager } from '../core/theme/ThemeManager';
+import { ThemeColors } from '../core/theme/ThemeColors';
+import { t, tNamed } from '../core/i18n/I18n';
 import { Logger } from '../utils/Logger';
 import { FileIcon } from '../components/FileIcon';
 
@@ -31,11 +36,26 @@ struct ItemDetailsPage {
   @State private isProcessing: boolean = false;
   @State private showRenameDialog: boolean = false;
   @State private renameText: string = '';
+
+  @State private theme: ThemeColors = ThemeManager.get().colors();
+
+  @StorageLink('languageVersion') langVersion: number = 0;
+
   private cloudProvider: ICloudProvider | null = null;
 
+  private onThemeChanged = (): void => {
+    this.theme = ThemeManager.get().colors();
+  };
+
   aboutToAppear(): void {
+    this.theme = ThemeManager.get().colors();
+    ThemeManager.get().subscribe(this.onThemeChanged);
     this.readParams();
     this.loadItem();
+  }
+
+  aboutToDisappear(): void {
+    ThemeManager.get().unsubscribe(this.onThemeChanged);
   }
 
   build() {
@@ -46,18 +66,15 @@ struct ItemDetailsPage {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor('#FFFFFF')
+      .backgroundColor(this.theme.background)
 
       if (this.showRenameDialog) {
         Stack({ alignContent: Alignment.Center }) {
           Column()
             .width('100%')
             .height('100%')
-            .backgroundColor('#66000000')
-            .onClick(() => {
-              this.showRenameDialog = false;
-            })
-
+            .backgroundColor(this.theme.overlay)
+            .onClick(() => { this.showRenameDialog = false; })
           this.buildRenameDialog()
         }
         .width('100%')
@@ -73,54 +90,43 @@ struct ItemDetailsPage {
     Row({ space: 12 }) {
       Text('←')
         .fontSize(24)
-        .fontColor('#000000')
+        .fontColor(this.theme.textPrimary)
         .width(40)
         .textAlign(TextAlign.Center)
-        .onClick(() => {
-          router.back();
-        })
+        .onClick(() => { router.back(); })
 
-      Text('Details')
+      Text(t('details.title'))
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
-        .fontColor('#000000')
+        .fontColor(this.theme.textPrimary)
         .layoutWeight(1)
 
-      // Blank slot keeps the title left-aligned with the row.
       Row().width(40)
     }
     .width('100%')
-    .padding({
-      left: 8,
-      right: 8,
-      top: 12,
-      bottom: 12
-    })
-    .backgroundColor(Color.White)
+    .padding({ left: 8, right: 8, top: 12, bottom: 12 })
+    .backgroundColor(this.theme.surface)
   }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildContent() {
     if (this.isLoading) {
       Column({ space: 12 }) {
-        LoadingProgress().width(36).height(36)
-        Text('Loading...').fontSize(13).fontColor('#666666')
+        LoadingProgress().width(36).height(36).color(this.theme.primary)
+        Text(t('details.loading')).fontSize(13).fontColor(this.theme.textSecondary)
       }
       .layoutWeight(1)
       .justifyContent(FlexAlign.Center)
       .width('100%')
     } else if (this.errorMessage.length > 0 || this.item === null) {
       Column({ space: 12 }) {
-        Text('Could not load details').fontSize(16).fontWeight(FontWeight.Bold)
-        Text(this.errorMessage).fontSize(13).fontColor('#666666')
+        Text(t('details.couldNotLoad'))
+          .fontSize(16).fontWeight(FontWeight.Bold)
+          .fontColor(this.theme.textPrimary)
+        Text(this.errorMessage)
+          .fontSize(13).fontColor(this.theme.textSecondary)
           .textAlign(TextAlign.Center)
-        Button('Retry').onClick(() => {
-          this.loadItem();
-        })
+        Button(t('common.retry')).onClick(() => { this.loadItem(); })
       }
       .layoutWeight(1)
       .justifyContent(FlexAlign.Center)
@@ -133,7 +139,7 @@ struct ItemDetailsPage {
           this.buildActionButtons()
           this.buildNameRow()
           this.buildOfflineRow()
-          Divider().color('#EEEEEE').margin({ top: 8 })
+          Divider().color(this.theme.divider).margin({ top: 8 })
           this.buildMetadata()
         }
         .width('100%')
@@ -144,14 +150,9 @@ struct ItemDetailsPage {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Header — back arrow + "Details" title, nothing else
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildIconSection() {
     Column() {
-      // Folder: yellow folder graphic with count badge
       if (this.item !== null && this.item.type === CloudItemType.FOLDER) {
         Stack({ alignContent: Alignment.TopStart }) {
           Column()
@@ -185,7 +186,6 @@ struct ItemDetailsPage {
         .height(120)
       }
 
-      // File: large type-specific badge
       if (this.item !== null && this.item.type === CloudItemType.FILE) {
         FileIcon({
           fileName: this.item.name,
@@ -199,25 +199,17 @@ struct ItemDetailsPage {
     .margin({ top: 16, bottom: 28 })
   }
 
-  // ---------------------------------------------------------------------------
-  // Content
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildActionButtons() {
     Row() {
-      this.buildActionButton('🗑', 'Delete', ACTION_DELETE, true)
-      this.buildActionButton('⬇', 'Download', ACTION_DOWNLOAD, this.canDownload())
-      this.buildActionButton('→', 'Move', ACTION_MOVE, true)
+      this.buildActionButton('🗑', t('details.delete'), ACTION_DELETE, true)
+      this.buildActionButton('⬇', t('details.download'), ACTION_DOWNLOAD, this.canDownload())
+      this.buildActionButton('→', t('details.move'), ACTION_MOVE, true)
     }
     .width('100%')
     .padding({ left: 16, right: 16 })
     .margin({ bottom: 32 })
   }
-
-  // ---------------------------------------------------------------------------
-  // Icon with count badge (folders) or file glyph
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildActionButton(
@@ -229,23 +221,22 @@ struct ItemDetailsPage {
     Column({ space: 8 }) {
       Text(icon)
         .fontSize(28)
-        .fontColor(enabled ? '#333333' : '#CCCCCC')
+        .fontColor(enabled ? this.theme.textPrimary : this.theme.textTertiary)
 
       Text(label)
         .fontSize(13)
-        .fontColor(enabled ? '#333333' : '#CCCCCC')
+        .fontColor(enabled ? this.theme.textPrimary : this.theme.textTertiary)
     }
     .layoutWeight(1)
     .alignItems(HorizontalAlign.Center)
     .onClick(() => {
       if (!enabled) {
-        promptAction.showToast({ message: 'Not available for folders' });
+        promptAction.showToast({ message: t('details.notAvailableFolders') });
         return;
       }
       if (action === ACTION_DELETE) {
         this.onDelete();
-      } else if (action ===
-        ACTION_DOWNLOAD) {
+      } else if (action === ACTION_DOWNLOAD) {
         this.onDownload();
       } else if (action === ACTION_MOVE) {
         this.onMove();
@@ -253,172 +244,132 @@ struct ItemDetailsPage {
     })
   }
 
-  // ---------------------------------------------------------------------------
-  // Three action buttons: Delete · Download · Move
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildNameRow() {
     Row() {
       Text(this.item !== null ? this.item.name : '')
         .fontSize(18)
-        .fontColor('#000000')
+        .fontColor(this.theme.textPrimary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
 
       Text('✎')
         .fontSize(22)
-        .fontColor('#666666')
+        .fontColor(this.theme.textSecondary)
         .width(40)
         .textAlign(TextAlign.Center)
-        .onClick(() => {
-          this.openRenameDialog();
-        })
+        .onClick(() => { this.openRenameDialog(); })
     }
     .width('100%')
-    .padding({
-      left: 20,
-      right: 16,
-      top: 12,
-      bottom: 12
-    })
+    .padding({ left: 20, right: 16, top: 12, bottom: 12 })
   }
 
   @Builder
   buildOfflineRow() {
     Row() {
-      Text('Make available offline')
+      Text(t('details.makeOffline'))
         .fontSize(16)
-        .fontColor('#000000')
+        .fontColor(this.theme.textPrimary)
         .layoutWeight(1)
 
       Toggle({ type: ToggleType.Switch, isOn: this.isOffline })
-        .selectedColor('#0078D4')
+        .selectedColor(this.theme.primary)
         .onChange((isOn: boolean) => {
           this.isOffline = isOn;
-          // Persisting and wiring to @ohos.file.cloudSync is a future milestone.
         })
     }
     .width('100%')
-    .padding({
-      left: 20,
-      right: 20,
-      top: 12,
-      bottom: 16
-    })
+    .padding({ left: 20, right: 20, top: 12, bottom: 16 })
   }
 
   @Builder
   buildMetadata() {
     Column() {
-      this.buildMetadataRow('Size', this.sizeLabel())
-      Divider().color('#F0F0F0').margin({ left: 20 })
-      this.buildMetadataRow('Created', this.dateLabel(this.item?.createdAt))
-      Divider().color('#F0F0F0').margin({ left: 20 })
-      this.buildMetadataRow('Modified', this.dateLabel(this.item?.modifiedAt))
+      this.buildMetadataRow(t('details.size'), this.sizeLabel())
+      Divider().color(this.theme.divider).margin({ left: 20 })
+      this.buildMetadataRow(t('details.created'), this.dateLabel(this.item?.createdAt))
+      Divider().color(this.theme.divider).margin({ left: 20 })
+      this.buildMetadataRow(t('details.modified'), this.dateLabel(this.item?.modifiedAt))
     }
     .width('100%')
     .padding({ top: 8 })
   }
-
-  // ---------------------------------------------------------------------------
-  // Name row (with rename icon)
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildMetadataRow(label: string, value: string) {
     Row() {
       Text(label)
         .fontSize(15)
-        .fontColor('#333333')
+        .fontColor(this.theme.textPrimary)
         .layoutWeight(1)
 
       Text(value)
         .fontSize(15)
-        .fontColor('#666666')
+        .fontColor(this.theme.textSecondary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .width('100%')
-    .padding({
-      left: 20,
-      right: 20,
-      top: 18,
-      bottom: 18
-    })
+    .padding({ left: 20, right: 20, top: 18, bottom: 18 })
   }
-
-  // ---------------------------------------------------------------------------
-  // Offline toggle
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildRenameDialog() {
     Column({ space: 16 }) {
-      Text('Rename')
+      Text(t('fb.renameTitle'))
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
-        .fontColor('#000000')
+        .fontColor(this.theme.textPrimary)
         .width('100%')
         .textAlign(TextAlign.Start)
 
-      TextInput({ text: this.renameText, placeholder: 'New name' })
+      TextInput({ text: this.renameText, placeholder: t('fb.renamePlaceholder') })
         .fontSize(15)
-        .onChange((value: string) => {
-          this.renameText = value;
-        })
+        .fontColor(this.theme.textPrimary)
+        .placeholderColor(this.theme.textTertiary)
+        .backgroundColor(this.theme.chipBg)
+        .onChange((value: string) => { this.renameText = value; })
 
       Row({ space: 12 }) {
-        Button('Cancel')
+        Button(t('common.cancel'))
           .layoutWeight(1)
-          .backgroundColor('#F0F0F0')
-          .fontColor('#333333')
-          .onClick(() => {
-            this.showRenameDialog = false;
-          })
+          .backgroundColor(this.theme.chipBg)
+          .fontColor(this.theme.textPrimary)
+          .onClick(() => { this.showRenameDialog = false; })
 
-        Button(this.isProcessing ? 'Renaming...' : 'Rename')
+        Button(this.isProcessing ? t('fb.renaming') : t('fb.rename'))
           .layoutWeight(1)
-          .backgroundColor('#0078D4')
-          .fontColor(Color.White)
+          .backgroundColor(this.theme.primary)
+          .fontColor(this.theme.primaryContrast)
           .enabled(!this.isProcessing)
-          .onClick(() => {
-            this.performRename();
-          })
+          .onClick(() => { this.performRename(); })
       }
       .width('100%')
     }
-    .width('85%')
-    .padding(20)
-    .backgroundColor(Color.White)
-    .borderRadius(16)
+    .width('85%').padding(20)
+    .backgroundColor(this.theme.surface).borderRadius(16)
   }
 
   // ---------------------------------------------------------------------------
-  // Metadata rows
+  // Params / load
   // ---------------------------------------------------------------------------
 
   private readParams(): void {
-    const raw: object = router.getParams();
-    if (raw === null || raw === undefined) {
-      return;
-    }
+    const raw: DetailsParams = router.getParams() as DetailsParams;
+    if (raw === null || raw === undefined) return;
 
-    const acc = Reflect.get(raw, 'accountId') as string;
-    const itm = Reflect.get(raw, 'itemId') as string;
-
-    if (acc !== undefined) {
-      this.accountId = acc;
+    if (raw.accountId !== undefined && raw.accountId !== null) {
+      this.accountId = raw.accountId;
     }
-    if (itm !== undefined) {
-      this.itemId = itm;
+    if (raw.itemId !== undefined && raw.itemId !== null) {
+      this.itemId = raw.itemId;
     }
   }
 
   private async loadItem(): Promise<void> {
     if (this.accountId.length === 0 || this.itemId.length === 0) {
-      this.errorMessage = 'Missing item information.';
+      this.errorMessage = t('details.missingInfo');
       this.isLoading = false;
       return;
     }
@@ -426,8 +377,17 @@ struct ItemDetailsPage {
     this.isLoading = true;
     this.errorMessage = '';
     try {
-      const type: CloudProviderType = CloudProviderType.ONEDRIVE;
+      const account: AccountInfo | null =
+        await AuthManager.findAccount(this.accountId);
+      if (account === null) {
+        this.errorMessage = t('details.couldNotLoad');
+        this.isLoading = false;
+        return;
+      }
+
+      const type: CloudProviderType = account.provider;
       this.cloudProvider = CloudProviderFactory.getProvider(this.accountId, type);
+
       const loaded: CloudItem = await this.cloudProvider.getItem(this.itemId);
       this.item = loaded;
     } catch (e) {
@@ -444,26 +404,22 @@ struct ItemDetailsPage {
   }
 
   private sizeLabel(): string {
-    if (this.item === null) {
-      return '—';
-    }
+    if (this.item === null) return '—';
     if (this.item.type === CloudItemType.FOLDER) {
       if (this.item.childCount !== undefined) {
         const n: number = this.item.childCount;
-        return n === 1 ? '1 item' : `${n} items`;
+        return n === 1
+          ? `1 ${t('details.item')}`
+          : `${n} ${t('details.items')}`;
       }
       return '—';
     }
-    if (this.item.size === undefined) {
-      return '—';
-    }
+    if (this.item.size === undefined) return '—';
     return this.formatSize(this.item.size);
   }
 
   private dateLabel(ms: number | undefined): string {
-    if (ms === undefined) {
-      return '—';
-    }
+    if (ms === undefined) return '—';
     const d = new Date(ms);
     const months: string[] = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -475,17 +431,9 @@ struct ItemDetailsPage {
       `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  // ---------------------------------------------------------------------------
-  // Rename dialog
-  // ---------------------------------------------------------------------------
-
   private formatSize(bytes: number): string {
-    if (bytes < 1024) {
-      return `${bytes} B`;
-    }
-    if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
-    }
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     if (bytes < 1024 * 1024 * 1024) {
       return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     }
@@ -493,21 +441,17 @@ struct ItemDetailsPage {
   }
 
   private openRenameDialog(): void {
-    if (this.item === null) {
-      return;
-    }
+    if (this.item === null) return;
     this.renameText = this.item.name;
     this.showRenameDialog = true;
   }
 
   private async performRename(): Promise<void> {
-    if (this.item === null || this.cloudProvider === null) {
-      return;
-    }
+    if (this.item === null || this.cloudProvider === null) return;
 
     const newName: string = this.renameText.trim();
     if (newName.length === 0) {
-      promptAction.showToast({ message: 'Name cannot be empty' });
+      promptAction.showToast({ message: t('fb.nameEmpty') });
       return;
     }
     if (newName === this.item.name) {
@@ -521,42 +465,35 @@ struct ItemDetailsPage {
         await this.cloudProvider.renameItem(this.item.id, newName);
       this.item = updated;
       this.showRenameDialog = false;
-      promptAction.showToast({ message: 'Renamed' });
-      Logger.info(TAG, `Renamed ${updated.id} → ${newName}`);
+      promptAction.showToast({ message: t('details.renamed') });
     } catch (e) {
       const err: Error = e as Error;
       Logger.error(TAG, `rename failed: ${err.message}`);
-      promptAction.showToast({ message: `Rename failed: ${err.message}` });
+      promptAction.showToast({
+        message: `${t('details.renameFailed')}: ${err.message}`
+      });
     } finally {
       this.isProcessing = false;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Actions
-  // ---------------------------------------------------------------------------
-
   private onDelete(): void {
-    if (this.item === null) {
-      return;
-    }
+    if (this.item === null) return;
     const wasFolder: boolean = this.item.type === CloudItemType.FOLDER;
     const name: string = this.item.name;
 
     promptAction.showDialog({
-      title: 'Delete',
-      message: `Delete "${name}"?${wasFolder
-        ? ' Its contents will be deleted too.'
-        : ''} This cannot be undone.`,
+      title: t('details.deleteTitle'),
+      message: wasFolder
+        ? tNamed('details.deleteMsgFolder', new Map([['name', name]]))
+        : tNamed('details.deleteMsg', new Map([['name', name]])),
       buttons: [
-        { text: 'Cancel', color: '#666666' },
-        { text: 'Delete', color: '#D32F2F' }
+        { text: t('common.cancel'), color: '#666666' },
+        { text: t('details.delete'), color: '#D32F2F' }
       ]
     })
       .then((result: promptAction.ShowDialogSuccessResponse) => {
-        if (result.index === 1) {
-          this.performDelete(name);
-        }
+        if (result.index === 1) this.performDelete(name);
       })
       .catch((e: Error) => {
         Logger.error(TAG, `showDialog failed: ${e.message}`);
@@ -564,31 +501,28 @@ struct ItemDetailsPage {
   }
 
   private async performDelete(name: string): Promise<void> {
-    if (this.item === null || this.cloudProvider === null) {
-      return;
-    }
+    if (this.item === null || this.cloudProvider === null) return;
     const id: string = this.item.id;
 
     try {
       await this.cloudProvider.deleteItem(id);
-      Logger.info(TAG, `Deleted ${id}`);
-      promptAction.showToast({ message: `"${name}" deleted` });
-      // Give the toast a moment, then return to the browser which will
-      // refresh its folder listing via onPageShow.
+      promptAction.showToast({
+        message: tNamed('details.deleted', new Map([['name', name]]))
+      });
       router.back();
     } catch (e) {
       const err: Error = e as Error;
       Logger.error(TAG, `delete failed: ${err.message}`);
-      promptAction.showToast({ message: `Delete failed: ${err.message}` });
+      promptAction.showToast({
+        message: `${t('details.deleteFailed')}: ${err.message}`
+      });
     }
   }
 
   private async onDownload(): Promise<void> {
-    if (this.item === null || this.cloudProvider === null) {
-      return;
-    }
+    if (this.item === null || this.cloudProvider === null) return;
     if (this.item.type !== CloudItemType.FILE) {
-      promptAction.showToast({ message: 'Only files can be downloaded' });
+      promptAction.showToast({ message: t('fb.onlyFilesDownload') });
       return;
     }
 
@@ -596,19 +530,19 @@ struct ItemDetailsPage {
       const context = getContext(this) as common.UIAbilityContext;
       const targetPath: string = `${context.cacheDir}/${this.item.name}`;
       await this.cloudProvider.downloadFile(this.item.id, targetPath);
-      Logger.info(TAG, `Downloaded to ${targetPath}`);
-      promptAction.showToast({ message: `Downloaded to cache: ${this.item.name}` });
+      promptAction.showToast({
+        message: `${t('details.downloadedToCache')} ${this.item.name}`
+      });
     } catch (e) {
       const err: Error = e as Error;
       Logger.error(TAG, `download failed: ${err.message}`);
-      promptAction.showToast({ message: `Download failed: ${err.message}` });
+      promptAction.showToast({
+        message: `${t('fb.downloadFailed')}: ${err.message}`
+      });
     }
   }
 
   private onMove(): void {
-    promptAction.showToast({ message: 'Move is coming soon' });
-    // A full implementation needs a folder-picker overlay that calls
-    // cloudProvider.moveItem(itemId, targetFolderId) once a destination
-    // is chosen. Tracked for a future milestone.
+    promptAction.showToast({ message: t('details.moveComingSoon') });
   }
 }

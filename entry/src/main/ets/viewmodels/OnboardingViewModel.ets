@@ -20,10 +20,9 @@ import { formatError } from '../utils/ErrorFormatter';
 import { Logger } from '../utils/Logger';
 import { parseQuery } from '../utils/StringUtil';
 import { Routes } from '../utils/RouteConstants';
-
+import { t } from '../core/i18n/I18n';
 
 const TAG: string = 'OnboardingViewModel';
-
 
 export const STEP_SELECT_PROVIDER: number = 0;
 export const STEP_AUTHENTICATE: number = 1;
@@ -47,26 +46,11 @@ export class OnboardingViewModel {
   statusMessage: string = '';
   isLoading: boolean = false;
   isAddMode: boolean = false;
-  readonly providers: ProviderOption[] = [
-    {
-      type: CloudProviderType.ONEDRIVE,
-      label: 'OneDrive',
-      subtitle: 'Microsoft account',
-      enabled: true
-    },
-    {
-      type: CloudProviderType.GOOGLE_DRIVE,
-      label: 'Google Drive',
-      subtitle: 'Google account',
-      enabled: true
-    },
-    {
-      type: CloudProviderType.DROPBOX,
-      label: 'Dropbox',
-      subtitle: 'Dropbox account',
-      enabled: true
-    }
-  ];
+
+  // Rebuilt on every read so labels track the current language.
+  get providers(): ProviderOption[] {
+    return OnboardingViewModel.buildProviders();
+  }
 
   private oauthState: string = '';
   private redirectConsumed: boolean = false;
@@ -105,7 +89,7 @@ export class OnboardingViewModel {
     } catch (e) {
       const err: Error = e as Error;
       Logger.error(TAG, `buildAuthorizationUrl failed: ${err.message}`);
-      this.statusMessage = 'Failed to prepare sign-in. Please try again.';
+      this.statusMessage = t('onb.prepareFailed');
     }
   }
 
@@ -113,8 +97,8 @@ export class OnboardingViewModel {
     this.authUrl = '';
     this.statusMessage = '';
     this.oauthState = '';
-    this.isLoading = false;
     this.redirectConsumed = false;
+    this.isLoading = false;
     this.step = STEP_SELECT_PROVIDER;
   }
 
@@ -123,28 +107,31 @@ export class OnboardingViewModel {
   }
 
   async handleRedirect(url: string): Promise<void> {
+    // Guard against a stale redirect URL in the WebView's history
+    // firing the same authorization code twice.
     if (this.redirectConsumed) {
       Logger.info(TAG, 'Duplicate redirect ignored.');
       return;
     }
     this.redirectConsumed = true;
+
     const params = parseQuery(url);
 
     const returnedState = params.get('state');
     if (returnedState !== this.oauthState) {
-      this.statusMessage = 'Security check failed. Please try again.';
+      this.statusMessage = t('onb.securityFailed');
       return;
     }
 
     const errorCode = params.get('error');
     if (errorCode !== undefined) {
-      this.statusMessage = `Sign-in cancelled (${errorCode}).`;
+      this.statusMessage = `${t('onb.cancelled')} (${errorCode}).`;
       return;
     }
 
     const code = params.get('code');
     if (code === undefined || code.length === 0) {
-      this.statusMessage = 'No authorization code returned.';
+      this.statusMessage = t('onb.noCode');
       return;
     }
 
@@ -171,41 +158,57 @@ export class OnboardingViewModel {
     } catch (e) {
       const err: Error = e as Error;
       Logger.error(TAG, `Token exchange failed: ${err.message}`);
-      this.statusMessage = `Sign-in failed: ${err.message}`;
+      const readable: string = formatError(err);
+      this.statusMessage = `${t('onb.signInFailed')}: ${readable}`;
     } finally {
       this.isLoading = false;
     }
   }
 
   providerLabel(type: CloudProviderType): string {
-    if (type === CloudProviderType.ONEDRIVE) {
-      return 'OneDrive';
-    }
-    if (type === CloudProviderType.GOOGLE_DRIVE) {
-      return 'Google Drive';
-    }
-    return 'provider';
+    if (type === CloudProviderType.ONEDRIVE) return t('onb.provider.onedrive');
+    if (type === CloudProviderType.GOOGLE_DRIVE) return t('onb.provider.google');
+    if (type === CloudProviderType.DROPBOX) return t('onb.provider.dropbox');
+    return t('onb.provider');
   }
 
-  /**
-   * Fetch the user profile from the specified provider using the newly
-   * issued access token, and construct an AccountInfo record.
-   *
-   * Called once per successful OAuth flow, before the tokens are saved
-   * to TokenStorage. The resulting accountId becomes the storage key
-   * for that account's tokens and preferences.
-   *
-   * Each provider returns a different user-info shape; the mapping
-   * below normalises them all to AccountInfo.
-   */
+  // ---------------------------------------------------------------------------
+  // Provider list — rebuilt on each read so language changes take effect
+  // ---------------------------------------------------------------------------
+
+  private static buildProviders(): ProviderOption[] {
+    return [
+      {
+        type: CloudProviderType.ONEDRIVE,
+        label: t('onb.provider.onedrive'),
+        subtitle: t('onb.subtitle.onedrive'),
+        enabled: true
+      },
+      {
+        type: CloudProviderType.GOOGLE_DRIVE,
+        label: t('onb.provider.google'),
+        subtitle: t('onb.subtitle.google'),
+        enabled: true
+      },
+      {
+        type: CloudProviderType.DROPBOX,
+        label: t('onb.provider.dropbox'),
+        subtitle: t('onb.subtitle.dropbox'),
+        enabled: true
+      }
+    ];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account construction per provider
+  // ---------------------------------------------------------------------------
+
   private async buildAccountInfo(
     type: CloudProviderType,
     tokens: AuthTokens
   ): Promise<AccountInfo> {
 
-    // =========================================================================
-    // OneDrive — Microsoft Graph /me
-    // =========================================================================
+    // ---- OneDrive ----
     if (type === CloudProviderType.ONEDRIVE) {
       const api = new OneDriveApiClient();
       const me: GraphUser = await api.getMe(tokens.accessToken);
@@ -226,9 +229,6 @@ export class OnboardingViewModel {
         email = me.userPrincipalName;
       }
 
-      // Prefer the email as the unique part of the account ID so the
-      // account remains stable across reinstalls. Fall back to the
-      // Graph user ID if no email is available.
       const uniquePart: string =
         email !== undefined && email.length > 0
           ? email
@@ -254,9 +254,7 @@ export class OnboardingViewModel {
       return account;
     }
 
-    // =========================================================================
-    // Google Drive — Drive v3 /about
-    // =========================================================================
+    // ---- Google Drive ----
     if (type === CloudProviderType.GOOGLE_DRIVE) {
       const api = new GoogleDriveApiClient();
       const about: GoogleAbout = await api.getAbout(tokens.accessToken);
@@ -280,13 +278,14 @@ export class OnboardingViewModel {
           ? user.emailAddress
           : undefined;
 
-      const uniquePart: string =
-        email !== undefined && email.length > 0
-          ? email
-          : 'google_user';
+      // Never fall back to a fixed string — that would collide every
+      // account without an email into a single slot.
+      if (email === undefined || email.length === 0) {
+        throw new Error('Google Drive returned no email address.');
+      }
 
       const accountId: string = makeAccountId(
-        CloudProviderType.GOOGLE_DRIVE, uniquePart
+        CloudProviderType.GOOGLE_DRIVE, email
       );
 
       Logger.info(
@@ -305,15 +304,12 @@ export class OnboardingViewModel {
       return account;
     }
 
-    // =========================================================================
-    // Dropbox — Dropbox v2 /users/get_current_account
-    // =========================================================================
+    // ---- Dropbox ----
     if (type === CloudProviderType.DROPBOX) {
       const api = new DropboxApiClient();
       const account: DropboxCurrentAccount =
         await api.getCurrentAccount(tokens.accessToken);
 
-      // Dropbox nests the display name inside a `name` object.
       let displayName: string = 'Dropbox User';
       if (account.name !== undefined
         && account.name !== null
@@ -330,8 +326,6 @@ export class OnboardingViewModel {
           ? account.email
           : undefined;
 
-      // Dropbox returns a stable `account_id` like "dbid:AABxyz…". Use
-      // that for the account ID so it survives email changes.
       const uniquePart: string =
         account.account_id !== undefined
           && account.account_id !== null
@@ -359,9 +353,6 @@ export class OnboardingViewModel {
       return info;
     }
 
-    // =========================================================================
-    // Unknown provider
-    // =========================================================================
     throw new Error(`Unsupported provider for account creation: ${type}`);
   }
 }

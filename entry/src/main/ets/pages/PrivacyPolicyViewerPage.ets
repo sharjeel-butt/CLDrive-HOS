@@ -1,14 +1,24 @@
 import { router } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { BusinessError } from '@kit.BasicServicesKit';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeColors } from '../core/theme/ThemeColors';
+import { LanguageManager } from '../core/i18n/LanguageManager';
+import { t } from '../core/i18n/I18n';
 import { Logger } from '../utils/Logger';
 
 const TAG: string = 'PrivacyPolicyViewerPage';
 
-const PRIVACY_POLICY_URL: string =
-  'https://sharjeel-butt.github.io/CLDrive-HOS/';
+const POLICY_BASE: string =
+  'https://sharjeel-butt.github.io/CLDrive-HOS';
+
+function policyUrlFor(lang: string): string {
+  if (lang === 'en') return `${POLICY_BASE}/`;
+  if (lang === 'zh-Hans') return `${POLICY_BASE}/privacy/zh-Hans/`;
+  if (lang === 'zh-Hant') return `${POLICY_BASE}/privacy/zh-Hant/`;
+  if (lang === 'ar') return `${POLICY_BASE}/privacy/ar/`;
+  if (lang === 'es') return `${POLICY_BASE}/privacy/es/`;
+  return `${POLICY_BASE}/`;
+}
 
 @Entry
 @Component
@@ -16,6 +26,9 @@ struct PrivacyPolicyViewerPage {
   @State private theme: ThemeColors = ThemeManager.get().colors();
   @State private isLoading: boolean = true;
   @State private errorMessage: string = '';
+  @State private url: string = POLICY_BASE;
+
+  @StorageLink('languageVersion') langVersion: number = 0;
 
   private controller: webview.WebviewController =
     new webview.WebviewController();
@@ -25,7 +38,9 @@ struct PrivacyPolicyViewerPage {
   };
 
   aboutToAppear(): void {
+    this.theme = ThemeManager.get().colors();
     ThemeManager.get().subscribe(this.onThemeChanged);
+    this.url = policyUrlFor(LanguageManager.get());
   }
 
   aboutToDisappear(): void {
@@ -38,7 +53,6 @@ struct PrivacyPolicyViewerPage {
 
   build() {
     Column() {
-      // ---- Header ----
       Row({ space: 12 }) {
         Text('←')
           .fontSize(24)
@@ -48,24 +62,26 @@ struct PrivacyPolicyViewerPage {
           .onClick(() => { router.back(); })
 
         Column({ space: 2 }) {
-          Text('Privacy Policy')
+          Text(t('viewer.title'))
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.theme.textPrimary)
             .textAlign(TextAlign.Start)
             .width('100%')
           if (this.errorMessage.length > 0) {
-            Text('Could not load')
+            Text(t('viewer.error'))
               .fontSize(11)
               .fontColor(this.theme.error)
               .textAlign(TextAlign.Start)
               .width('100%')
           } else {
-            Text('sharjeel-butt.github.io/CLDrive-HOS')
+            Text(this.url.replace('https://', ''))
               .fontSize(11)
               .fontColor(this.theme.textSecondary)
               .textAlign(TextAlign.Start)
               .width('100%')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
         }
         .alignItems(HorizontalAlign.Start)
@@ -78,9 +94,8 @@ struct PrivacyPolicyViewerPage {
 
       Divider().color(this.theme.divider)
 
-      // ---- WebView / loading / error ----
       Stack() {
-        Web({ src: PRIVACY_POLICY_URL, controller: this.controller })
+        Web({ src: this.url, controller: this.controller })
           .darkMode(this.webDarkMode())
           .forceDarkAccess(false)
           .domStorageAccess(false)
@@ -95,9 +110,7 @@ struct PrivacyPolicyViewerPage {
             this.isLoading = true;
             this.errorMessage = '';
           })
-          .onPageEnd(() => {
-            this.isLoading = false;
-          })
+          .onPageEnd(() => { this.isLoading = false; })
           .onErrorReceive((event) => {
             if (event === undefined) return;
             const err = event.error;
@@ -107,13 +120,13 @@ struct PrivacyPolicyViewerPage {
             );
             this.isLoading = false;
             this.errorMessage =
-              `Could not load the privacy policy (${err.getErrorCode}).`;
+              `${t('viewer.error')} (${err.getErrorCode}).`;
           })
 
         if (this.isLoading) {
           Column({ space: 12 }) {
             LoadingProgress().width(36).height(36).color(this.theme.primary)
-            Text('Loading policy...')
+            Text(t('viewer.loading'))
               .fontSize(13).fontColor(this.theme.textSecondary)
           }
           .width('100%').height('100%')
@@ -124,7 +137,7 @@ struct PrivacyPolicyViewerPage {
         if (this.errorMessage.length > 0) {
           Column({ space: 14 }) {
             Text('🌐').fontSize(42)
-            Text('Could not load the policy')
+            Text(t('viewer.error'))
               .fontSize(15)
               .fontWeight(FontWeight.Bold)
               .fontColor(this.theme.textPrimary)
@@ -133,16 +146,16 @@ struct PrivacyPolicyViewerPage {
               .fontColor(this.theme.textSecondary)
               .textAlign(TextAlign.Center)
               .padding({ left: 32, right: 32 })
-            Button('Retry')
+            Button(t('viewer.retry'))
               .onClick(() => {
                 this.errorMessage = '';
                 this.isLoading = true;
                 try {
-                  this.controller.loadUrl(PRIVACY_POLICY_URL);
+                  this.controller.loadUrl(this.url);
                 } catch (e) {
                   const err: Error = e as Error;
                   Logger.error(TAG, `loadUrl retry failed: ${err.message}`);
-                  this.errorMessage = 'Retry failed. Check your connection.';
+                  this.errorMessage = t('viewer.retryFailed');
                   this.isLoading = false;
                 }
               })

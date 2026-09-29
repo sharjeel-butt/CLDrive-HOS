@@ -25,6 +25,10 @@ export class AuthManager {
     return AccountStore.getAccounts();
   }
 
+  static async findAccount(accountId: string): Promise<AccountInfo | null> {
+    return AccountStore.findAccount(accountId);
+  }
+
   static async hasAccounts(): Promise<boolean> {
     return AccountStore.hasAccounts();
   }

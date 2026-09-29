@@ -1,91 +1,89 @@
 import { BusinessError } from '@kit.BasicServicesKit';
 import { HttpError } from '../core/network/HttpError';
-
-/**
- * Centralized error-to-message conversion. Every place that shows an
- * error to the user — activity rows, toasts, dialogs — should call
- * formatError() so the text is consistent and readable.
- */
+import { t, tNamed } from '../core/i18n/I18n';
 
 // ---------------------------------------------------------------------------
-// HarmonyOS file-system error codes
+// HarmonyOS file-system error codes → i18n keys
 // ---------------------------------------------------------------------------
-const FS_ERROR_MAP: Map<number, string> = new Map([
-  [13900001, 'Operation not permitted'],
-  [13900002, 'File not found'],
-  [13900003, 'Process not found'],
-  [13900004, 'Operation interrupted'],
-  [13900005, 'I/O error'],
-  [13900011, 'Out of memory'],
-  [13900012, 'Permission denied'],
-  [13900013, 'Invalid memory address'],
-  [13900014, 'Device or resource busy'],
-  [13900015, 'File already exists'],
-  [13900016, 'Cross-device operation not supported'],
-  [13900017, 'Device not found'],
-  [13900018, 'Not a directory'],
-  [13900019, 'Is a directory'],
-  [13900020, 'Invalid argument'],
-  [13900021, 'File table overflow'],
-  [13900022, 'Too many open files'],
-  [13900023, 'File is busy'],
-  [13900024, 'File is too large'],
-  [13900025, 'No space left on device'],
-  [13900026, 'Invalid seek'],
-  [13900027, 'Read-only file system'],
-  [13900028, 'Too many links'],
-  [13900029, 'Broken pipe'],
-  [13900030, 'Math error'],
-  [13900031, 'Math result not representable'],
-  [13900032, 'Deadlock detected'],
-  [13900033, 'Filename is too long'],
-  [13900035, 'Operation not implemented'],
-  [13900036, 'Directory not empty'],
-  [13900037, 'Too many symbolic links'],
-  [13900038, 'No data available'],
-  [13900039, 'Timer expired'],
-  [13900042, 'Unknown error'],
-  [13900043, 'File name too long'],
-  [14300002, 'Invalid URI']
+
+const FS_CODE_TO_KEY: Map<number, string> = new Map([
+  [13900001, 'err.fs.perm'],
+  [13900002, 'err.fs.notFound'],
+  [13900003, 'err.unknown'],
+  [13900004, 'err.unknown'],
+  [13900005, 'err.fs.io'],
+  [13900011, 'err.unknown'],
+  [13900012, 'err.fs.denied'],
+  [13900013, 'err.unknown'],
+  [13900014, 'err.unknown'],
+  [13900015, 'err.fs.exists'],
+  [13900016, 'err.unknown'],
+  [13900017, 'err.unknown'],
+  [13900018, 'err.fs.notDir'],
+  [13900019, 'err.fs.isDir'],
+  [13900020, 'err.unknown'],
+  [13900021, 'err.unknown'],
+  [13900022, 'err.fs.tooManyFiles'],
+  [13900023, 'err.unknown'],
+  [13900024, 'err.unknown'],
+  [13900025, 'err.fs.noSpace'],
+  [13900026, 'err.unknown'],
+  [13900027, 'err.fs.denied'],
+  [13900028, 'err.unknown'],
+  [13900029, 'err.unknown'],
+  [13900030, 'err.unknown'],
+  [13900031, 'err.unknown'],
+  [13900032, 'err.unknown'],
+  [13900033, 'err.fs.nameTooLong'],
+  [13900035, 'err.unknown'],
+  [13900036, 'err.fs.dirNotEmpty'],
+  [13900037, 'err.unknown'],
+  [13900038, 'err.unknown'],
+  [13900039, 'err.unknown'],
+  [13900042, 'err.unknown'],
+  [13900043, 'err.fs.nameTooLong'],
+  [14300002, 'err.unknown']
 ]);
 
 // ---------------------------------------------------------------------------
 // Network-layer error codes (@ohos.net.http uses 2300xxx)
 // ---------------------------------------------------------------------------
-const NETWORK_ERROR_MAP: Map<number, string> = new Map([
-  [2300001, 'Unsupported protocol'],
-  [2300003, 'URL is malformed'],
-  [2300005, 'Proxy resolution failed'],
-  [2300006, 'Hostname could not be resolved'],
-  [2300007, 'Could not connect to server'],
-  [2300008, 'Bad HTTP response from server'],
-  [2300028, 'Request timed out'],
-  [2300052, 'Empty reply from server'],
-  [2300060, 'Server SSL certificate is not trusted'],
-  [2300061, 'SSL certificate could not be verified'],
-  [2300999, 'Unknown network error']
+
+const NET_CODE_TO_KEY: Map<number, string> = new Map([
+  [2300001, 'err.net.proto'],
+  [2300003, 'err.net.url'],
+  [2300005, 'err.net.host'],
+  [2300006, 'err.net.host'],
+  [2300007, 'err.net.connect'],
+  [2300008, 'err.net.badResponse'],
+  [2300028, 'err.net.timeout'],
+  [2300052, 'err.net.emptyReply'],
+  [2300060, 'err.net.ssl'],
+  [2300061, 'err.net.ssl'],
+  [2300999, 'err.net.connect']
 ]);
 
 // ---------------------------------------------------------------------------
 // HTTP status codes
 // ---------------------------------------------------------------------------
-const HTTP_STATUS_MAP: Map<number, string> = new Map([
-  [400, 'Bad request — the server rejected the request'],
-  [401, 'Authentication expired — please sign in again'],
-  [403, 'Permission denied by the cloud provider'],
-  [404, 'File or folder not found on the server'],
-  [405, 'Operation not allowed on this item'],
-  [408, 'Server timed out while waiting for the request'],
-  [409, 'Conflicting change on the server — try again'],
-  [410, 'The file has been permanently removed'],
-  [413, 'File is too large for the server to accept'],
-  [415, 'File type is not supported by the server'],
-  [422, 'The server rejected the request as invalid'],
-  [429, 'Too many requests — please wait a moment and try again'],
-  [500, 'Server error — try again in a moment'],
-  [502, 'Server is temporarily unreachable'],
-  [503, 'Service is temporarily unavailable'],
-  [504, 'Server gateway timed out']
+
+const HTTP_STATUS_TO_KEY: Map<number, string> = new Map([
+  [400, 'err.http.400'],
+  [401, 'err.http.401'],
+  [403, 'err.http.403'],
+  [404, 'err.http.404'],
+  [405, 'err.http.405'],
+  [408, 'err.http.408'],
+  [409, 'err.http.409'],
+  [410, 'err.http.410'],
+  [413, 'err.http.413'],
+  [415, 'err.http.415'],
+  [422, 'err.http.422'],
+  [429, 'err.http.429'],
+  [500, 'err.http.500'],
+  [502, 'err.http.502'],
+  [503, 'err.http.503'],
+  [504, 'err.http.504']
 ]);
 
 // ---------------------------------------------------------------------------
@@ -95,10 +93,13 @@ const HTTP_STATUS_MAP: Map<number, string> = new Map([
 /**
  * Convert any error into a message suitable for display to a user.
  * Never returns empty, never returns raw JSON, never returns a bare
- * numeric code without a description.
+ * numeric code without a description. The result is localized using
+ * the currently active language.
  */
-export function formatError(e: Error | BusinessError | undefined | null): string {
-  if (e === undefined || e === null) return 'Unknown error';
+export function formatError(
+  e: Error | BusinessError | undefined | null
+): string {
+  if (e === undefined || e === null) return t('err.unknown');
 
   // 1. Our own HttpError — carries HTTP status and server message.
   if (e instanceof HttpError) {
@@ -110,18 +111,17 @@ export function formatError(e: Error | BusinessError | undefined | null): string
   if (be.code !== undefined && be.code !== null && be.code > 0) {
     const code: number = be.code;
 
-    const fsMsg: string | undefined = FS_ERROR_MAP.get(code);
-    if (fsMsg !== undefined) return fsMsg;
+    const fsKey: string | undefined = FS_CODE_TO_KEY.get(code);
+    if (fsKey !== undefined) return t(fsKey);
 
-    const netMsg: string | undefined = NETWORK_ERROR_MAP.get(code);
-    if (netMsg !== undefined) return netMsg;
+    const netKey: string | undefined = NET_CODE_TO_KEY.get(code);
+    if (netKey !== undefined) return t(netKey);
 
-    // Unknown code — include the numeric so support can search for it,
-    // but prefix with context so it's not a bare number.
+    // Unknown code — include the numeric so support can search for it.
     const raw: string = be.message !== undefined && be.message !== null
       ? be.message
-      : 'Unknown';
-    return `${raw} (code ${code})`;
+      : t('err.unknown');
+    return `${raw} (${t('err.code')} ${code})`;
   }
 
   // 3. Plain Error.
@@ -136,47 +136,34 @@ export function formatError(e: Error | BusinessError | undefined | null): string
   return cleanMessage(msg);
 }
 
-/**
- * Format a HttpError into readable text. Uses the HTTP status map when
- * possible; falls back to the server-provided message otherwise.
- */
 function formatHttpError(err: HttpError): string {
-  // Network-layer failure — status 0 means "no response at all".
   if (err.code === 0) {
     const detail: string = err.body.length > 0
       ? err.body
-      : 'Check your internet connection and try again';
-    return `Network error: ${cleanMessage(detail)}`;
+      : t('err.checkConnection');
+    return `${t('err.network')}: ${cleanMessage(detail)}`;
   }
 
-  // Provider-specific JSON in the body? Try to extract a real message.
   const providerMsg: string | null = extractProviderMessage(err.body);
   if (providerMsg !== null) {
-    return `Server rejected: ${providerMsg}`;
+    return `${t('err.serverRejected')} ${providerMsg}`;
   }
 
-  const statusMsg: string | undefined = HTTP_STATUS_MAP.get(err.code);
-  if (statusMsg !== undefined) {
-    return statusMsg;
+  const statusKey: string | undefined = HTTP_STATUS_TO_KEY.get(err.code);
+  if (statusKey !== undefined) {
+    return t(statusKey);
   }
 
   if (err.code >= 500) {
-    return `Server error (HTTP ${err.code}) — try again in a moment`;
+    return `${t('err.serverError')} (HTTP ${err.code}) — ${t('err.tryAgain')}`;
   }
   if (err.code >= 400) {
-    return `Request rejected (HTTP ${err.code})`;
+    return `${t('err.requestRejected')} (HTTP ${err.code})`;
   }
 
-  return `Unexpected response (HTTP ${err.code})`;
+  return `${t('err.unexpected')} (HTTP ${err.code})`;
 }
 
-/**
- * Look for a structured error message inside a body that might be
- * Microsoft Graph JSON ({"error": {"message": "..."}}), Google Drive
- * JSON ({"error": {"message": "..."}}), or a plain string.
- *
- * Returns null if no recognisable message is found.
- */
 function extractProviderMessage(body: string): string | null {
   if (body === undefined || body === null || body.length === 0) return null;
 
@@ -216,30 +203,23 @@ function extractProviderMessage(body: string): string | null {
   return null;
 }
 
-/**
- * Trim noise from a raw message: leading/trailing whitespace, URL
- * fragments that aren't helpful, and envelope words like "Error:".
- */
 function cleanMessage(msg: string): string {
-  if (msg === undefined || msg === null) return 'Unknown error';
+  if (msg === undefined || msg === null) return t('err.unknown');
 
   let cleaned: string = msg.trim();
 
-  // Drop the "HTTP NNN on <url>: " prefix if one is present.
   const httpPrefix: number = cleaned.indexOf('): ');
   if (cleaned.indexOf('HTTP') === 0 && httpPrefix > 0 && httpPrefix < 200) {
     cleaned = cleaned.substring(httpPrefix + 3).trim();
   }
 
-  // Strip enclosing quotes if present.
   if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length > 1) {
     cleaned = cleaned.substring(1, cleaned.length - 1);
   }
 
-  // Cap overly long messages.
   if (cleaned.length > 220) {
     cleaned = cleaned.substring(0, 217) + '...';
   }
 
-  return cleaned.length > 0 ? cleaned : 'Unknown error';
+  return cleaned.length > 0 ? cleaned : t('err.unknown');
 }

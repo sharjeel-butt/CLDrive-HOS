@@ -4,52 +4,26 @@ import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { PrivacyPrefs } from '../core/settings/PrivacyPrefs';
 import { AuthManager } from '../core/auth/AuthManager';
+import { t } from '../core/i18n/I18n';
 import { Routes } from '../utils/RouteConstants';
 import { Logger } from '../utils/Logger';
 import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
 
 const TAG: string = 'PrivacyPolicyPage';
 
-const PRIVACY_POLICY_URL: string =
-  'https://sharjeel-butt.github.io/CLDrive-HOS/';
-
 interface PrivacyPoint {
   icon: string;
-  title: string;
-  body: string;
+  titleKey: string;
+  bodyKey: string;
 }
 
 const PRIVACY_POINTS: PrivacyPoint[] = [
-  {
-    icon: '🔒',
-    title: 'Your data stays on your device',
-    body: 'CLDrive does not operate servers. Your files and account data are never sent to us.'
-  },
-  {
-    icon: '☁',
-    title: 'Direct cloud connection',
-    body: 'Files move directly between your device and the cloud provider you choose — OneDrive, Google Drive, or Dropbox.'
-  },
-  {
-    icon: '🚫',
-    title: 'No tracking, no analytics',
-    body: 'We do not collect analytics, crash reports, device identifiers, location data, or usage statistics.'
-  },
-  {
-    icon: '🔑',
-    title: 'Secure token storage',
-    body: 'OAuth tokens are stored in HarmonyOS Asset Store, the operating system\u2019s hardware-backed encrypted storage.'
-  },
-  {
-    icon: '🤝',
-    title: 'Only connected providers',
-    body: 'Data is shared only with the cloud providers you explicitly connect. No advertising SDKs, no telemetry services.'
-  },
-  {
-    icon: '⚙',
-    title: 'You are in control',
-    body: 'Sign out, clear offline files, clear task history, or revoke app access at any time.'
-  }
+  { icon: '🔒', titleKey: 'priv.point1.title', bodyKey: 'priv.point1.body' },
+  { icon: '☁',  titleKey: 'priv.point2.title', bodyKey: 'priv.point2.body' },
+  { icon: '🚫', titleKey: 'priv.point3.title', bodyKey: 'priv.point3.body' },
+  { icon: '🔑', titleKey: 'priv.point4.title', bodyKey: 'priv.point4.body' },
+  { icon: '🤝', titleKey: 'priv.point5.title', bodyKey: 'priv.point5.body' },
+  { icon: '⚙',  titleKey: 'priv.point6.title', bodyKey: 'priv.point6.body' }
 ];
 
 @Entry
@@ -59,11 +33,14 @@ struct PrivacyPolicyPage {
   @State private agreed: boolean = false;
   @State private isProcessing: boolean = false;
 
+  @StorageLink('languageVersion') langVersion: number = 0;
+
   private onThemeChanged = (): void => {
     this.theme = ThemeManager.get().colors();
   };
 
   aboutToAppear(): void {
+    this.theme = ThemeManager.get().colors();
     ThemeManager.get().subscribe(this.onThemeChanged);
   }
 
@@ -102,12 +79,11 @@ struct PrivacyPolicyPage {
   onDecline(): void {
     const ctx = getContext(this) as common.UIAbilityContext;
     promptAction.showDialog({
-      title: 'Decline privacy policy?',
-      message: 'You must agree to the Privacy Policy to use CLDrive. ' +
-        'Declining will close the app.',
+      title: t('priv.declineTitle'),
+      message: t('priv.declineBody'),
       buttons: [
-        { text: 'Go back', color: '#0A5BD3' },
-        { text: 'Exit', color: '#D32F2F' }
+        { text: t('priv.goBack'), color: '#0A5BD3' },
+        { text: t('priv.exit'), color: '#D32F2F' }
       ]
     })
       .then((r: promptAction.ShowDialogSuccessResponse) => {
@@ -129,15 +105,14 @@ struct PrivacyPolicyPage {
 
   build() {
     Column() {
-      // ---- Header ----
       Column({ space: 4 }) {
-        Text('Before you continue')
+        Text(t('priv.title'))
           .fontSize(22)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.theme.textPrimary)
           .textAlign(TextAlign.Start)
           .width('100%')
-        Text('Please review and accept our Privacy Policy')
+        Text(t('priv.subtitle'))
           .fontSize(13)
           .fontColor(this.theme.textSecondary)
           .textAlign(TextAlign.Start)
@@ -147,10 +122,8 @@ struct PrivacyPolicyPage {
       .alignItems(HorizontalAlign.Start)
       .padding({ left: 24, right: 24, top: 32, bottom: 16 })
 
-      // ---- Scrollable content ----
       Scroll() {
         Column({ space: 12 }) {
-          // Branding
           Row({ space: 12 }) {
             Image($r('app.media.app_icon'))
               .width(44).height(44)
@@ -165,7 +138,7 @@ struct PrivacyPolicyPage {
                 .fontColor(this.theme.textPrimary)
                 .textAlign(TextAlign.Start)
                 .width('100%')
-              Text('Privacy Policy')
+              Text(t('priv.header'))
                 .fontSize(12)
                 .fontColor(this.theme.textSecondary)
                 .textAlign(TextAlign.Start)
@@ -180,7 +153,6 @@ struct PrivacyPolicyPage {
           .backgroundColor(this.theme.surfaceSubtle)
           .borderRadius(14)
 
-          // Summary points
           ForEach(PRIVACY_POINTS, (point: PrivacyPoint) => {
             Row({ space: 14 }) {
               Column() {
@@ -192,13 +164,13 @@ struct PrivacyPolicyPage {
               .alignItems(HorizontalAlign.Center)
 
               Column({ space: 3 }) {
-                Text(point.title)
+                Text(t(point.titleKey))
                   .fontSize(14)
                   .fontWeight(FontWeight.Medium)
                   .fontColor(this.theme.textPrimary)
                   .textAlign(TextAlign.Start)
                   .width('100%')
-                Text(point.body)
+                Text(t(point.bodyKey))
                   .fontSize(12)
                   .fontColor(this.theme.textSecondary)
                   .textAlign(TextAlign.Start)
@@ -212,12 +184,11 @@ struct PrivacyPolicyPage {
             .backgroundColor(this.theme.surface)
             .borderRadius(12)
             .alignItems(VerticalAlign.Top)
-          }, (point: PrivacyPoint) => point.title)
+          }, (point: PrivacyPoint) => point.titleKey)
 
-          // View full policy link
           Row({ space: 8 }) {
             Text('📄').fontSize(16)
-            Text('View full policy online')
+            Text(t('priv.viewOnline'))
               .fontSize(14)
               .fontColor(this.theme.primary)
               .fontWeight(FontWeight.Medium)
@@ -241,9 +212,7 @@ struct PrivacyPolicyPage {
       .scrollBar(BarState.Off)
       .edgeEffect(EdgeEffect.Spring)
 
-      // ---- Bottom action bar ----
       Column({ space: 16 }) {
-        // Agreement checkbox
         Row({ space: 12 }) {
           Text(this.agreed ? '☑' : '☐')
             .fontSize(24)
@@ -251,7 +220,7 @@ struct PrivacyPolicyPage {
               ? this.theme.primary : this.theme.textTertiary)
             .width(28).textAlign(TextAlign.Center)
 
-          Text('I have read and agree to the Privacy Policy')
+          Text(t('priv.agreeCheck'))
             .fontSize(13)
             .fontColor(this.theme.textPrimary)
             .layoutWeight(1)
@@ -261,9 +230,8 @@ struct PrivacyPolicyPage {
         .alignItems(VerticalAlign.Center)
         .onClick(() => { this.agreed = !this.agreed; })
 
-        // Buttons
         Row({ space: 12 }) {
-          Button('Decline')
+          Button(t('priv.decline'))
             .layoutWeight(1)
             .backgroundColor(this.theme.chipBg)
             .fontColor(this.theme.textPrimary)
@@ -271,7 +239,7 @@ struct PrivacyPolicyPage {
             .enabled(!this.isProcessing)
             .onClick(() => { this.onDecline(); })
 
-          Button(this.isProcessing ? 'Saving...' : 'Agree & Continue')
+          Button(this.isProcessing ? t('priv.saving') : t('priv.agree'))
             .layoutWeight(1.5)
             .backgroundColor(this.agreed
               ? this.theme.primary : this.theme.border)

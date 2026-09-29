@@ -222,21 +222,29 @@ export class OneDriveProvider implements ICloudProvider {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Resumable upload (chunked PUTs, files > 4 MB)
-  // ---------------------------------------------------------------------------
-
   private async uploadLarge(
     parentId: string,
     fileName: string,
     localPath: string,
     totalSize: number
   ): Promise<CloudItem> {
+    // Same problematic-character handling as uploadSmall.
+    const needsRename: boolean = OneDriveProvider.hasProblematicChars(fileName);
+    const sessionName: string = needsRename
+      ? `tmp_${Date.now()}${OneDriveProvider.safeExtension(fileName)}`
+      : fileName;
+
+    Logger.info(
+      TAG,
+      `uploadLarge: "${fileName}" size=${totalSize} ` +
+        `sessionName="${sessionName}" needsRename=${needsRename}`
+    );
+
     // ---- 1. Create the upload session ----
     let session: UploadSessionResponse;
     try {
       session = await this.run(t =>
-      this.api.createUploadSession(t, parentId, fileName)
+      this.api.createUploadSession(t, parentId, sessionName)
       );
     } catch (e) {
       const err: Error = e as Error;
@@ -247,18 +255,11 @@ export class OneDriveProvider implements ICloudProvider {
       throw err;
     }
 
-    Logger.info(
-      TAG,
-      `uploadLarge: session created for "${fileName}", ` +
-        `uploadUrl=${session.uploadUrl}`
-    );
-
     const chunkSize: number = OneDriveConfig.UPLOAD_CHUNK_BYTES;
     let offset: number = 0;
     let lastItem: CloudItem | null = null;
     let chunkIndex: number = 0;
 
-    // ---- 2. Upload chunks ----
     while (offset < totalSize) {
       const end: number = Math.min(offset + chunkSize, totalSize);
       const chunkLength: number = end - offset;
@@ -270,11 +271,6 @@ export class OneDriveProvider implements ICloudProvider {
         );
       } catch (e) {
         const err: Error = e as Error;
-        Logger.error(
-          TAG,
-          `readRange failed at offset=${offset} for "${fileName}": ` +
-            `${err.message}`
-        );
         throw new Error(
           `Cannot read chunk at offset ${offset} from "${fileName}": ` +
             `${err.message}`
@@ -298,23 +294,9 @@ export class OneDriveProvider implements ICloudProvider {
 
         if (result !== null) {
           lastItem = OneDriveMapper.toCloudItem(result);
-          Logger.info(
-            TAG,
-            `uploadLarge: "${fileName}" chunk ${chunkIndex} returned DriveItem`
-          );
-        } else {
-          Logger.info(
-            TAG,
-            `uploadLarge: "${fileName}" chunk ${chunkIndex} accepted (more to go)`
-          );
         }
       } catch (e) {
         const err: Error = e as Error;
-        Logger.error(
-          TAG,
-          `uploadChunk failed at offset=${offset} for "${fileName}": ` +
-            `${err.message}`
-        );
         throw new Error(
           `Chunk upload failed at offset ${offset}: ${err.message}`
         );
@@ -324,20 +306,65 @@ export class OneDriveProvider implements ICloudProvider {
       chunkIndex++;
     }
 
-    // ---- 3. Validate we received the final DriveItem ----
     if (lastItem === null) {
       throw new Error(
-        `Upload session for "${fileName}" completed without a DriveItem ` +
-          `response. This usually means the final chunk did not include ` +
-          `the closing byte range.`
+        `Upload session for "${fileName}" completed without a DriveItem.`
       );
     }
 
-    Logger.info(
-      TAG,
-      `uploadLarge: "${fileName}" uploaded successfully`
-    );
+    // ---- 2. Rename to the original name if we used a temp ----
+    if (needsRename) {
+      Logger.info(
+        TAG,
+        `uploadLarge: renaming "${sessionName}" → "${fileName}"`
+      );
+      try {
+        await this.run(t =>
+        this.api.renameItem(t, lastItem!.id, fileName)
+        );
+        lastItem = {
+          id: lastItem.id,
+          provider: lastItem.provider,
+          name: fileName,
+          type: lastItem.type,
+          size: lastItem.size,
+          childCount: lastItem.childCount,
+          mimeType: lastItem.mimeType,
+          modifiedAt: lastItem.modifiedAt,
+          createdAt: lastItem.createdAt,
+          parentId: lastItem.parentId,
+          downloadUrl: lastItem.downloadUrl,
+          webUrl: lastItem.webUrl,
+          thumbnailUrl: lastItem.thumbnailUrl,
+          etag: lastItem.etag,
+          rawMetadata: lastItem.rawMetadata
+        };
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.error(
+          TAG,
+          `rename after upload failed: ${err.message}`
+        );
+        // Return with the temp name — the file exists at least.
+      }
+    }
+
+    Logger.info(TAG, `uploadLarge: "${fileName}" uploaded successfully`);
     return lastItem;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers — same logic as the ApiClient
+  // ---------------------------------------------------------------------------
+
+  private static hasProblematicChars(name: string): boolean {
+    return /[\[\]()#%]/.test(name);
+  }
+
+  private static safeExtension(name: string): string {
+    const dot: number = name.lastIndexOf('.');
+    if (dot <= 0 || dot === name.length - 1) return '';
+    return name.substring(dot);
   }
 
   // ===========================================================================

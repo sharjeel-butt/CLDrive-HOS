@@ -1,6 +1,5 @@
 import { promptAction, router } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { request } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { fileUri } from '@kit.CoreFileKit';
@@ -23,6 +22,8 @@ import {
 import { OperationTracker } from '../core/services/OperationTracker';
 import { OfflineStore, OfflineFileRecord } from '../core/services/OfflineStore';
 import { HttpClient, HttpRequestOptions } from '../core/network/HttpClient';
+import { LocalFileService } from '../utils/FileUtil';
+import { formatError } from '../utils/ErrorFormatter';
 import { Logger } from '../utils/Logger';
 import { Routes } from '../utils/RouteConstants';
 
@@ -33,7 +34,6 @@ const SEARCH_DEBOUNCE_MS: number = 400;
 
 const FOLDER_DOWNLOAD_ENABLED: boolean = false;
 const UPLOAD_FOLDER_ENABLED: boolean = false;
-
 
 // =============================================================================
 // Exported types
@@ -287,9 +287,9 @@ export class FileBrowserViewModel {
       this.items = await this.cloudProvider.listChildren(folderId);
       this.currentFolderId = folderId;
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `loadFolder failed: ${err.message}`);
-      this.errorMessage = err.message;
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `loadFolder failed: ${readable}`);
+      this.errorMessage = readable;
     } finally {
       this.isLoading = false;
     }
@@ -385,9 +385,9 @@ export class FileBrowserViewModel {
       this.searchResults = results;
       this.searchError = '';
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `search failed: ${err.message}`);
-      this.searchError = err.message;
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `search failed: ${readable}`);
+      this.searchError = readable;
       this.searchResults = [];
     } finally {
       this.isSearching = false;
@@ -437,8 +437,8 @@ export class FileBrowserViewModel {
       try {
         existing = await provider.listChildren(this.currentFolderId);
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.error(TAG, `listChildren failed before upload: ${err.message}`);
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `listChildren failed before upload: ${readable}`);
       }
 
       const takenNames: string[] = [];
@@ -484,10 +484,10 @@ export class FileBrowserViewModel {
         try {
           sandboxPath = await this.copyPickerUriToSandbox(uri, finalName);
         } catch (e) {
-          const err: Error = e as Error;
+          const readable: string = formatError(e as Error);
           Logger.error(
             TAG,
-            `Failed to copy "${finalName}" to sandbox: ${err.message}`
+            `Failed to prepare "${finalName}": ${readable}`
           );
           const failedPayload: RetryPayload = {
             parentId: this.currentFolderId,
@@ -497,7 +497,7 @@ export class FileBrowserViewModel {
             OperationType.UPLOAD, finalName, '', OperationItemKind.FILE,
             i + 1, uris.length, failedPayload
           );
-          tracker.markFailed(failedId, `Could not prepare file: ${err.message}`);
+          tracker.markFailed(failedId, `Could not prepare file: ${readable}`);
           continue;
         }
 
@@ -540,12 +540,12 @@ export class FileBrowserViewModel {
             fs.unlinkSync(sandboxPaths[i]);
           } catch (_) { /* already gone */ }
         } catch (e) {
-          const err: Error = e as Error;
+          const readable: string = formatError(e as Error);
           Logger.error(
             TAG,
-            `upload "${uploadNames[i]}" failed: ${err.message}`
+            `upload "${uploadNames[i]}" failed: ${readable}`
           );
-          tracker.markFailed(opIds[i], err.message);
+          tracker.markFailed(opIds[i], readable);
           failed++;
         }
       }
@@ -564,8 +564,8 @@ export class FileBrowserViewModel {
         });
       }
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.warn(TAG, `upload cancelled or failed: ${err.message}`);
+      const readable: string = formatError(e as Error);
+      Logger.warn(TAG, `upload cancelled or failed: ${readable}`);
     }
   }
 
@@ -648,17 +648,17 @@ export class FileBrowserViewModel {
           await provider.uploadFile(parentId, name, `file://${f.path}`);
           tracker.markSuccess(opId);
         } catch (e) {
-          const err: Error = e as Error;
-          Logger.error(TAG, `upload ${f.relative} failed: ${err.message}`);
-          tracker.markFailed(opId, err.message);
+          const readable: string = formatError(e as Error);
+          Logger.error(TAG, `upload ${f.relative} failed: ${readable}`);
+          tracker.markFailed(opId, readable);
         }
       }
 
       await this.loadFolder(this.currentFolderId);
       promptAction.showToast({ message: `Uploaded ${files.length} files` });
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.warn(TAG, `upload folder cancelled or failed: ${err.message}`);
+      const readable: string = formatError(e as Error);
+      Logger.warn(TAG, `upload folder cancelled or failed: ${readable}`);
     }
   }
 
@@ -806,7 +806,9 @@ export class FileBrowserViewModel {
   onAddAccount(): void {
     this.isSidebarOpen = false;
     router.pushUrl({ url: Routes.ONBOARDING, params: { mode: 'add' } })
-      .catch((e: Error) => { Logger.error(TAG, `pushUrl failed: ${e.message}`); });
+      .catch((e: Error) => {
+        Logger.error(TAG, `pushUrl failed: ${e.message}`);
+      });
   }
 
   onSignOut(): void {
@@ -824,7 +826,9 @@ export class FileBrowserViewModel {
       .then((result: promptAction.ShowDialogSuccessResponse) => {
         if (result.index === 1) this.performSignOut();
       })
-      .catch((e: Error) => { Logger.error(TAG, `showDialog failed: ${e.message}`); });
+      .catch((e: Error) => {
+        Logger.error(TAG, `showDialog failed: ${e.message}`);
+      });
   }
 
   private async performSignOut(): Promise<void> {
@@ -843,8 +847,8 @@ export class FileBrowserViewModel {
       await this.activateAccount(remaining[0].accountId);
       await this.refreshAccounts();
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `signOut failed: ${err.message}`);
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `signOut failed: ${readable}`);
     }
   }
 
@@ -861,7 +865,9 @@ export class FileBrowserViewModel {
       .then((result: promptAction.ShowDialogSuccessResponse) => {
         if (result.index === 1) this.performExit();
       })
-      .catch((e: Error) => { Logger.error(TAG, `showDialog failed: ${e.message}`); });
+      .catch((e: Error) => {
+        Logger.error(TAG, `showDialog failed: ${e.message}`);
+      });
   }
 
   private performExit(): void {
@@ -939,7 +945,7 @@ export class FileBrowserViewModel {
   }
 
   // ===========================================================================
-  // Retry
+  // Retry — preserved but hidden in the page behind RETRY_ENABLED flag
   // ===========================================================================
 
   async retrySingleOperation(opId: string): Promise<void> {
@@ -952,8 +958,8 @@ export class FileBrowserViewModel {
       return;
     }
 
-    // Legacy upload tasks (registered before sandbox-copy was added)
-    // still carry a picker URI. Re-pick the file instead.
+    // Legacy upload tasks registered before sandbox-copy was added still
+    // carry a picker URI. Re-pick the file instead.
     if (op.type === OperationType.UPLOAD) {
       const localUri: string =
         op.retryPayload !== undefined
@@ -981,8 +987,6 @@ export class FileBrowserViewModel {
       const op: Operation = all[i];
       if (!canRetry(op)) continue;
 
-      // Uploads whose source isn't a sandbox path are legacy entries
-      // that need re-selection. Skip them and count them separately.
       if (op.type === OperationType.UPLOAD) {
         const localUri: string =
           op.retryPayload !== undefined
@@ -1043,109 +1047,6 @@ export class FileBrowserViewModel {
     }
   }
 
-  /**
-   * Ask the user to re-select a file for a legacy failed upload, then
-   * register and run a fresh upload task with the newly-picked file.
-   *
-   * Used when the retry's source URI lives outside the sandbox — which
-   * only happens for tasks registered before the sandbox-copy fix.
-   */
-  private async reselectAndRetryUpload(op: Operation): Promise<void> {
-    if (this.cloudProvider === null || this.context === null) return;
-    const ctx: common.UIAbilityContext = this.context;
-    const provider: ICloudProvider = this.cloudProvider;
-    const tracker: OperationTracker = OperationTracker.get();
-
-    // Confirm before opening a picker.
-    let confirmed: boolean = false;
-    try {
-      const result: promptAction.ShowDialogSuccessResponse =
-        await promptAction.showDialog({
-          title: 'Select the file again',
-          message: `"${op.itemName}" was picked in a previous session. ` +
-            `Please select it again to retry the upload.`,
-          buttons: [
-            { text: 'Cancel', color: '#666666' },
-            { text: 'Select file', color: '#0A5BD3' }
-          ]
-        });
-      confirmed = result.index === 1;
-    } catch (_) {
-      return;
-    }
-    if (!confirmed) return;
-
-    // Open the picker for a single file.
-    let newUri: string = '';
-    try {
-      const p = new picker.DocumentViewPicker(ctx);
-      const options = new picker.DocumentSelectOptions();
-      options.maxSelectNumber = 1;
-
-      const uris: string[] = await p.select(options);
-      if (uris === null || uris === undefined || uris.length === 0) return;
-      newUri = uris[0];
-    } catch (e) {
-      const err: Error = e as Error;
-      Logger.warn(TAG, `reselect picker cancelled: ${err.message}`);
-      return;
-    }
-
-    const newName: string = FileBrowserViewModel.fileNameFromUri(newUri);
-    const finalName: string = newName.length > 0 ? newName : op.itemName;
-
-    // Copy to sandbox immediately — future retries will use this path.
-    let sandboxPath: string = '';
-    try {
-      sandboxPath = await this.copyPickerUriToSandbox(newUri, finalName);
-    } catch (e) {
-      const err: Error = e as Error;
-      promptAction.showToast({
-        message: `Could not prepare file: ${err.message}`
-      });
-      return;
-    }
-
-    // Preserve the original destination folder.
-    const parentId: string =
-      op.retryPayload !== undefined
-        && op.retryPayload.parentId !== undefined
-        ? op.retryPayload.parentId
-        : this.currentFolderId;
-
-    // Register a fresh task — the original failed row stays in history.
-    const freshPayload: RetryPayload = {
-      parentId: parentId,
-      localUri: sandboxPath
-    };
-    const freshId: string = tracker.register(
-      OperationType.UPLOAD,
-      finalName,
-      '',
-      OperationItemKind.FILE,
-      0,
-      0,
-      freshPayload
-    );
-    tracker.markRunning(freshId);
-
-    try {
-      await provider.uploadFile(parentId, finalName, sandboxPath);
-      tracker.markSuccess(freshId);
-
-      // Clean up sandbox copy on success.
-      try { fs.unlinkSync(sandboxPath); } catch (_) { /* gone */ }
-
-      await this.loadFolder(this.currentFolderId);
-      promptAction.showToast({ message: `Uploaded "${finalName}"` });
-    } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `reselect upload failed: ${err.message}`);
-      tracker.markFailed(freshId, err.message);
-      promptAction.showToast({ message: `Upload failed: ${err.message}` });
-    }
-  }
-
   private async executeOperationPayload(
     opId: string,
     op: Operation
@@ -1174,11 +1075,9 @@ export class FileBrowserViewModel {
         if (localUri.length === 0) {
           throw new Error('Missing local file for retry');
         }
-
-        // Final guard — legacy picker URIs can't be read after restart.
         if (!this.isSandboxPath(localUri)) {
           throw new Error(
-            'Source file from a previous session. Tap ↻ to re-select it.'
+            'Source file is from a previous session. Tap ↻ to re-select it.'
           );
         }
 
@@ -1244,9 +1143,99 @@ export class FileBrowserViewModel {
 
       throw new Error(`Retry not supported for type: ${op.type}`);
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `retry ${op.itemName} failed: ${err.message}`);
-      tracker.markFailed(opId, err.message);
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `retry ${op.itemName} failed: ${readable}`);
+      tracker.markFailed(opId, readable);
+    }
+  }
+
+  private async reselectAndRetryUpload(op: Operation): Promise<void> {
+    if (this.cloudProvider === null || this.context === null) return;
+    const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+    const tracker: OperationTracker = OperationTracker.get();
+
+    let confirmed: boolean = false;
+    try {
+      const result: promptAction.ShowDialogSuccessResponse =
+        await promptAction.showDialog({
+          title: 'Select the file again',
+          message: `"${op.itemName}" was picked in a previous session. ` +
+            `Please select it again to retry the upload.`,
+          buttons: [
+            { text: 'Cancel', color: '#666666' },
+            { text: 'Select file', color: '#0A5BD3' }
+          ]
+        });
+      confirmed = result.index === 1;
+    } catch (_) {
+      return;
+    }
+    if (!confirmed) return;
+
+    let newUri: string = '';
+    try {
+      const p = new picker.DocumentViewPicker(ctx);
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 1;
+
+      const uris: string[] = await p.select(options);
+      if (uris === null || uris === undefined || uris.length === 0) return;
+      newUri = uris[0];
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.warn(TAG, `reselect picker cancelled: ${readable}`);
+      return;
+    }
+
+    const newName: string = FileBrowserViewModel.fileNameFromUri(newUri);
+    const finalName: string = newName.length > 0 ? newName : op.itemName;
+
+    let sandboxPath: string = '';
+    try {
+      sandboxPath = await this.copyPickerUriToSandbox(newUri, finalName);
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      promptAction.showToast({
+        message: `Could not prepare file: ${readable}`
+      });
+      return;
+    }
+
+    const parentId: string =
+      op.retryPayload !== undefined
+        && op.retryPayload.parentId !== undefined
+        ? op.retryPayload.parentId
+        : this.currentFolderId;
+
+    const freshPayload: RetryPayload = {
+      parentId: parentId,
+      localUri: sandboxPath
+    };
+    const freshId: string = tracker.register(
+      OperationType.UPLOAD,
+      finalName,
+      '',
+      OperationItemKind.FILE,
+      0,
+      0,
+      freshPayload
+    );
+    tracker.markRunning(freshId);
+
+    try {
+      await provider.uploadFile(parentId, finalName, sandboxPath);
+      tracker.markSuccess(freshId);
+
+      try { fs.unlinkSync(sandboxPath); } catch (_) { /* gone */ }
+
+      await this.loadFolder(this.currentFolderId);
+      promptAction.showToast({ message: `Uploaded "${finalName}"` });
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `reselect upload failed: ${readable}`);
+      tracker.markFailed(freshId, readable);
+      promptAction.showToast({ message: `Upload failed: ${readable}` });
     }
   }
 
@@ -1387,10 +1376,10 @@ export class FileBrowserViewModel {
       tracker.markSuccess(opId);
       promptAction.showToast({ message: `"${item.name}" available offline` });
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `saveForOffline failed: ${err.message}`);
-      tracker.markFailed(opId, err.message);
-      promptAction.showToast({ message: `Offline download failed: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `saveForOffline failed: ${readable}`);
+      tracker.markFailed(opId, readable);
+      promptAction.showToast({ message: `Offline download failed: ${readable}` });
     } finally {
       this.markDownloading(item.id, false);
     }
@@ -1404,8 +1393,8 @@ export class FileBrowserViewModel {
       try {
         fs.unlinkSync(record.localPath);
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.warn(TAG, `Failed to delete offline file: ${err.message}`);
+        const readable: string = formatError(e as Error);
+        Logger.warn(TAG, `Failed to delete offline file: ${readable}`);
       }
     }
 
@@ -1458,9 +1447,9 @@ export class FileBrowserViewModel {
       };
       await ctx.startAbility(want);
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `startAbility failed: ${err.message}`);
-      promptAction.showToast({ message: `Cannot open file: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `startAbility failed: ${readable}`);
+      promptAction.showToast({ message: `Cannot open file: ${readable}` });
     }
   }
 
@@ -1500,8 +1489,8 @@ export class FileBrowserViewModel {
       await this.loadFolder(this.currentFolderId);
       promptAction.showToast({ message: 'Renamed' });
     } catch (e) {
-      const err: Error = e as Error;
-      promptAction.showToast({ message: `Rename failed: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      promptAction.showToast({ message: `Rename failed: ${readable}` });
     } finally {
       this.isProcessing = false;
     }
@@ -1550,7 +1539,9 @@ export class FileBrowserViewModel {
           this.runBatchDeleteBackground(items);
         }
       })
-      .catch((e: Error) => { Logger.error(TAG, `dialog failed: ${e.message}`); });
+      .catch((e: Error) => {
+        Logger.error(TAG, `dialog failed: ${e.message}`);
+      });
   }
 
   private async runBatchDeleteBackground(items: CloudItem[]): Promise<void> {
@@ -1588,9 +1579,9 @@ export class FileBrowserViewModel {
           this.offlineIds = next;
         }
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.error(TAG, `delete ${items[i].name} failed: ${err.message}`);
-        tracker.markFailed(opIds[i], err.message);
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `delete ${items[i].name} failed: ${readable}`);
+        tracker.markFailed(opIds[i], readable);
         failed++;
       }
     }
@@ -1705,8 +1696,8 @@ export class FileBrowserViewModel {
       this.movePickerItems = folders;
       this.movePickerFolderId = folderId;
     } catch (e) {
-      const err: Error = e as Error;
-      this.movePickerError = err.message;
+      const readable: string = formatError(e as Error);
+      this.movePickerError = readable;
     } finally {
       this.movePickerLoading = false;
     }
@@ -1809,9 +1800,9 @@ export class FileBrowserViewModel {
         tracker.markSuccess(opIds[i]);
         success++;
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.error(TAG, `move ${it.name} failed: ${err.message}`);
-        tracker.markFailed(opIds[i], err.message);
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `move ${it.name} failed: ${readable}`);
+        tracker.markFailed(opIds[i], readable);
         failed++;
       }
     }
@@ -1896,9 +1887,9 @@ export class FileBrowserViewModel {
         }
         success++;
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.error(TAG, `copy ${it.name} failed: ${err.message}`);
-        tracker.markFailed(opIds[i], err.message);
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `copy ${it.name} failed: ${readable}`);
+        tracker.markFailed(opIds[i], readable);
         failed++;
       }
     }
@@ -1951,8 +1942,8 @@ export class FileBrowserViewModel {
           );
         }
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.warn(TAG, `copy monitor poll ${attempt + 1} failed: ${err.message}`);
+        const readable: string = formatError(e as Error);
+        Logger.warn(TAG, `copy monitor poll ${attempt + 1} failed: ${readable}`);
       }
     }
 
@@ -2083,8 +2074,8 @@ export class FileBrowserViewModel {
       }
       promptAction.showToast({ message: `Folder "${name}" created` });
     } catch (e) {
-      const err: Error = e as Error;
-      promptAction.showToast({ message: `Create failed: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      promptAction.showToast({ message: `Create failed: ${readable}` });
     } finally {
       this.isCreatingFolder = false;
     }
@@ -2136,8 +2127,8 @@ export class FileBrowserViewModel {
       await this.downloadViaHttp(info, saveUri, item.name, item.id, opId);
       promptAction.showToast({ message: `Downloaded: ${item.name}` });
     } catch (e) {
-      const err: Error = e as Error;
-      promptAction.showToast({ message: `Download failed: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      promptAction.showToast({ message: `Download failed: ${readable}` });
     }
   }
 
@@ -2226,8 +2217,8 @@ export class FileBrowserViewModel {
         await this.downloadViaHttp(info, targetUri, item.name, item.id, opIds[i]);
         success++;
       } catch (e) {
-        const err: Error = e as Error;
-        Logger.error(TAG, `Download failed for ${item.name}: ${err.message}`);
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `Download failed for ${item.name}: ${readable}`);
         failed++;
       }
     }
@@ -2254,8 +2245,8 @@ export class FileBrowserViewModel {
       }
       return result[0];
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.info(TAG, `pickDestinationFolder cancelled: ${err.message}`);
+      const readable: string = formatError(e as Error);
+      Logger.info(TAG, `pickDestinationFolder cancelled: ${readable}`);
       return null;
     }
   }
@@ -2346,13 +2337,14 @@ export class FileBrowserViewModel {
 
       tracker.markSuccess(opId);
       this.markDownloading(itemId, false);
+      Logger.info(TAG, `Downloaded ${fileName} → ${targetUri}`);
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `downloadViaHttp failed for ${fileName}: ${err.message}`);
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `downloadViaHttp failed for ${fileName}: ${readable}`);
       this.removeEmptyFile(targetUri);
       this.markDownloading(itemId, false);
-      tracker.markFailed(opId, err.message);
-      throw err;
+      tracker.markFailed(opId, readable);
+      throw new Error(readable);
     } finally {
       request.destroy();
       try {
@@ -2367,33 +2359,38 @@ export class FileBrowserViewModel {
     targetUri: string,
     fileName: string
   ): Promise<void> {
-    let destPath: string = '';
+    let destFile: fs.File;
     try {
-      const uriObj = new fileUri.FileUri(targetUri);
-      destPath = uriObj.path;
+      destFile = LocalFileService.openDestinationForWrite(targetUri);
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.warn(TAG, `fileUri conversion failed: ${err.message}`);
-      destPath = targetUri.startsWith('file://')
-        ? targetUri.substring('file://'.length)
-        : targetUri;
+      const readable: string = formatError(e as Error);
+      throw new Error(`Cannot open destination for "${fileName}": ${readable}`);
     }
 
-    const srcFile = fs.openSync(sandboxPath, fs.OpenMode.READ_ONLY);
-    let destFile: fs.File | null = null;
+    let srcFile: fs.File | null = null;
     try {
-      destFile = fs.openSync(
-        destPath,
-        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
-      );
-      fs.copyFileSync(srcFile.fd, destFile.fd);
-    } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `Copy to destination failed: ${err.message}`);
-      throw err;
-    } finally {
+      const stat = fs.statSync(sandboxPath);
+      const buffer = new ArrayBuffer(stat.size);
+
+      srcFile = fs.openSync(sandboxPath, fs.OpenMode.READ_ONLY);
+      fs.readSync(srcFile.fd, buffer);
       fs.closeSync(srcFile);
-      if (destFile !== null) fs.closeSync(destFile);
+      srcFile = null;
+
+      fs.writeSync(destFile.fd, buffer);
+      Logger.info(TAG, `Wrote ${buffer.byteLength} bytes to ${targetUri}`);
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.error(
+        TAG,
+        `Copy to destination failed for "${fileName}": ${readable}`
+      );
+      throw new Error(readable);
+    } finally {
+      if (srcFile !== null) {
+        try { fs.closeSync(srcFile); } catch (_) { /* ignore */ }
+      }
+      try { fs.closeSync(destFile); } catch (_) { /* ignore */ }
     }
   }
 
@@ -2430,9 +2427,9 @@ export class FileBrowserViewModel {
     if (destUri === null) return;
 
     const stagingDir: string = `${ctx.cacheDir}/staging_${Date.now()}`;
-    this.ensureDir(stagingDir);
+    LocalFileService.ensureDir(stagingDir);
     for (let i = 0; i < folderPaths.length; i++) {
-      this.ensureDir(`${stagingDir}/${folderPaths[i]}`);
+      LocalFileService.ensureDir(`${stagingDir}/${folderPaths[i]}`);
     }
 
     const tracker: OperationTracker = OperationTracker.get();
@@ -2453,7 +2450,7 @@ export class FileBrowserViewModel {
 
         const localPath: string = `${stagingDir}/${task.relativePath}`;
         const parentDir: string = localPath.substring(0, localPath.lastIndexOf('/'));
-        this.ensureDir(parentDir);
+        LocalFileService.ensureDir(parentDir);
 
         const f = fs.openSync(
           localPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
@@ -2463,8 +2460,8 @@ export class FileBrowserViewModel {
         tracker.markSuccess(opId);
         success++;
       } catch (e) {
-        const err: Error = e as Error;
-        tracker.markFailed(opId, err.message);
+        const readable: string = formatError(e as Error);
+        tracker.markFailed(opId, readable);
         failed++;
       }
     }
@@ -2486,8 +2483,8 @@ export class FileBrowserViewModel {
       await this.copySandboxToDestination(zipPath, destUri, zipName);
       promptAction.showToast({ message: `Downloaded "${zipName}"` });
     } catch (e) {
-      const err: Error = e as Error;
-      promptAction.showToast({ message: `Failed: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      promptAction.showToast({ message: `Failed: ${readable}` });
     } finally {
       this.removeDirRecursive(stagingDir);
       try { fs.accessSync(zipPath); fs.unlinkSync(zipPath); } catch (_) { /* ignore */ }
@@ -2530,9 +2527,9 @@ export class FileBrowserViewModel {
     if (destUri === null) return;
 
     const stagingDir: string = `${ctx.cacheDir}/staging_${Date.now()}`;
-    this.ensureDir(stagingDir);
+    LocalFileService.ensureDir(stagingDir);
     for (let i = 0; i < folderPaths.length; i++) {
-      this.ensureDir(`${stagingDir}/${folderPaths[i]}`);
+      LocalFileService.ensureDir(`${stagingDir}/${folderPaths[i]}`);
     }
 
     const tracker: OperationTracker = OperationTracker.get();
@@ -2553,7 +2550,7 @@ export class FileBrowserViewModel {
 
         const localPath: string = `${stagingDir}/${task.relativePath}`;
         const parentDir: string = localPath.substring(0, localPath.lastIndexOf('/'));
-        this.ensureDir(parentDir);
+        LocalFileService.ensureDir(parentDir);
 
         const f = fs.openSync(
           localPath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
@@ -2563,8 +2560,8 @@ export class FileBrowserViewModel {
         tracker.markSuccess(opId);
         success++;
       } catch (e) {
-        const err: Error = e as Error;
-        tracker.markFailed(opId, err.message);
+        const readable: string = formatError(e as Error);
+        tracker.markFailed(opId, readable);
         failed++;
       }
     }
@@ -2586,8 +2583,8 @@ export class FileBrowserViewModel {
       await this.copySandboxToDestination(zipPath, destUri, zipName);
       promptAction.showToast({ message: `Downloaded ${success} files as ZIP` });
     } catch (e) {
-      const err: Error = e as Error;
-      promptAction.showToast({ message: `Failed: ${err.message}` });
+      const readable: string = formatError(e as Error);
+      promptAction.showToast({ message: `Failed: ${readable}` });
     } finally {
       this.removeDirRecursive(stagingDir);
       try { fs.accessSync(zipPath); fs.unlinkSync(zipPath); } catch (_) { /* ignore */ }
@@ -2609,8 +2606,8 @@ export class FileBrowserViewModel {
     try {
       children = await this.cloudProvider.listChildren(folder.id);
     } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `listChildren(${relativePath}) failed: ${err.message}`);
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `listChildren(${relativePath}) failed: ${readable}`);
       return;
     }
 
@@ -2673,11 +2670,6 @@ export class FileBrowserViewModel {
   // Filesystem helpers
   // ===========================================================================
 
-  /**
-   * Copy a picked file into the app's sandbox and return the persistent
-   * sandbox path. Picker URIs are session-scoped; the sandbox copy makes
-   * retries work after app restarts.
-   */
   private async copyPickerUriToSandbox(
     uri: string,
     fileName: string
@@ -2688,36 +2680,55 @@ export class FileBrowserViewModel {
     const safeName: string = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uniqueId: string = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const uploadsDir: string = `${ctx.filesDir}/uploads`;
-    this.ensureDir(uploadsDir);
     const sandboxPath: string = `${uploadsDir}/${uniqueId}_${safeName}`;
 
-    const srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    Logger.info(TAG, `copyPickerUriToSandbox: src=${uri}`);
+    Logger.info(TAG, `copyPickerUriToSandbox: dst=${sandboxPath}`);
+
+    LocalFileService.ensureDir(uploadsDir);
+
+    let srcFile: fs.File;
     try {
-      const destFile = fs.openSync(
-        sandboxPath,
-        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
-      );
-      try {
-        fs.copyFileSync(srcFile.fd, destFile.fd);
-      } finally {
-        fs.closeSync(destFile);
-      }
-    } finally {
-      fs.closeSync(srcFile);
+      srcFile = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      Logger.info(TAG, `Opened source picker URI: ${uri}`);
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `Failed to open picker URI "${uri}": ${readable}`);
+      throw new Error(readable);
     }
 
-    Logger.info(TAG, `Copied picker URI to sandbox: ${sandboxPath}`);
+    let destFile: fs.File | null = null;
+    try {
+      try {
+        destFile = fs.openSync(
+          sandboxPath,
+          fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
+        );
+        Logger.info(TAG, `Created sandbox destination: ${sandboxPath}`);
+      } catch (e) {
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `Failed to create "${sandboxPath}": ${readable}`);
+        throw new Error(readable);
+      }
+
+      try {
+        fs.copyFileSync(srcFile.fd, destFile.fd);
+        Logger.info(TAG, `Copied picker URI to sandbox: ${sandboxPath}`);
+      } catch (e) {
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `copyFileSync failed: ${readable}`);
+        throw new Error(readable);
+      }
+    } finally {
+      try { fs.closeSync(srcFile); } catch (_) { /* ignore */ }
+      if (destFile !== null) {
+        try { fs.closeSync(destFile); } catch (_) { /* ignore */ }
+      }
+    }
+
     return sandboxPath;
   }
 
-  /**
-   * Return true if a URI resolves to a path inside the app's sandbox
-   * (filesDir or cacheDir). Picker URIs live under user storage
-   * ("/storage/Users/currentUser/...") and are NOT sandbox paths.
-   *
-   * Upload retries only work when the source is a sandbox path — the
-   * picker grant is session-scoped and gone after a restart.
-   */
   private isSandboxPath(uri: string | undefined | null): boolean {
     if (uri === undefined || uri === null || uri.length === 0) return false;
     if (this.context === null) return false;
@@ -2734,50 +2745,6 @@ export class FileBrowserViewModel {
     const filesDir: string = this.context.filesDir;
     const cacheDir: string = this.context.cacheDir;
     return path.startsWith(filesDir) || path.startsWith(cacheDir);
-  }
-
-  private ensureDir(fullPath: string): void {
-    if (fullPath.length === 0) return;
-
-    let target: string = fullPath;
-    while (target.length > 1 && target.endsWith('/')) {
-      target = target.substring(0, target.length - 1);
-    }
-
-    try {
-      fs.accessSync(target);
-      return;
-    } catch (_) { /* doesn't exist */ }
-
-    const toCreate: string[] = [target];
-    let current: string = target;
-
-    while (current.length > 1) {
-      const slash: number = current.lastIndexOf('/');
-      if (slash <= 0) break;
-      current = current.substring(0, slash);
-      try {
-        fs.accessSync(current);
-        break;
-      } catch (_) {
-        toCreate.push(current);
-      }
-    }
-
-    toCreate.reverse();
-    for (let i = 0; i < toCreate.length; i++) {
-      const dir: string = toCreate[i];
-      try {
-        fs.mkdirSync(dir);
-      } catch (e) {
-        const err: Error = e as Error;
-        if (err.message.indexOf('exist') >= 0
-          || err.message.indexOf('EEXIST') >= 0) {
-          continue;
-        }
-        throw err;
-      }
-    }
   }
 
   private removeDirRecursive(dirPath: string): void {
@@ -2823,7 +2790,9 @@ export class FileBrowserViewModel {
     router.pushUrl({
       url: Routes.ITEM_DETAILS,
       params: { accountId: this.activeAccountId, itemId: itemId }
-    }).catch((e: Error) => { Logger.error(TAG, `pushUrl failed: ${e.message}`); });
+    }).catch((e: Error) => {
+      Logger.error(TAG, `pushUrl failed: ${e.message}`);
+    });
   }
 
   // ===========================================================================

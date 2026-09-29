@@ -1,6 +1,7 @@
 import { http } from '@kit.NetworkKit';
 import { HttpError } from './HttpError';
 import { Logger } from '../../utils/Logger';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 /**
  * Caller-facing options for a request. All fields have defaults, so callers
@@ -75,8 +76,17 @@ export class HttpClient {
         throw e;
       }
       const err: Error = e as Error;
-      Logger.error(HttpClient.TAG, `Network error on ${url}: ${err.message}`);
-      throw new HttpError(0, err.message, url);
+      const be = e as BusinessError;
+      const detail: string = be.message !== undefined && be.message !== null
+        ? be.message
+        : 'Unknown network failure';
+      Logger.error(
+        HttpClient.TAG,
+        `Network error on ${url}: ${detail} (code ${be.code ?? 'none'})`
+      );
+      // Pass the original error text as the body so formatError can
+      // map it. The status code 0 signals "no HTTP response received".
+      throw new HttpError(0, detail, url);
     } finally {
       request.destroy();
     }

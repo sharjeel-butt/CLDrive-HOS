@@ -5,6 +5,7 @@ import { ThemeMode } from '../core/theme/ThemeMode';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { OfflineStore, CacheInfo } from '../core/services/OfflineStore';
 import { Logger } from '../utils/Logger';
+import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
 
 const TAG: string = 'SettingsPage';
 
@@ -126,6 +127,16 @@ struct SettingsPage {
       : `${this.cacheFileCount} files · ${sizeStr}`;
   }
 
+  private versionLabel(): string {
+    const info: AppVersionInfo = getAppVersionInfo();
+    return info.versionName;
+  }
+
+  private buildNumber(): string {
+    const info: AppVersionInfo = getAppVersionInfo();
+    return info.versionCode.toString();
+  }
+
   build() {
     Column() {
       this.buildHeader()
@@ -164,7 +175,9 @@ struct SettingsPage {
           this.buildSectionLabel('ABOUT')
 
           Column() {
-            this.buildAboutRow('Version', '1.0.0')
+            this.buildAboutRow('Version', this.versionLabel())
+            Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
+            this.buildAboutRow('Build', this.buildNumber())
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
             this.buildAboutRow('Provider', 'OneDrive · Google Drive')
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
@@ -385,11 +398,17 @@ struct SettingsPage {
   @Builder
   buildAboutRow(label: string, value: string) {
     Row() {
-      Text(label).fontSize(15).fontColor(this.theme.textPrimary).layoutWeight(1)
+      Text(label)
+        .fontSize(15)
+        .fontColor(this.theme.textPrimary)
+        .layoutWeight(1)
+
       Text(value)
-        .fontSize(14).fontColor(this.theme.textSecondary)
+        .fontSize(14)
+        .fontColor(this.theme.textSecondary)
         .textAlign(TextAlign.End)
-        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 16 })

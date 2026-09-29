@@ -236,23 +236,84 @@ export class OneDriveApiClient {
       .execute();
   }
 
-  // ===========================================================================
-  // Upload
-  // ===========================================================================
-
+  /**
+   * Simple upload for files < 4 MB.
+   *
+   * Microsoft Graph's `:/path:/` addressing scheme breaks on certain
+   * characters in filenames — notably `[ ] ( ) # %`. When the name
+   * contains any of them, we upload under a UUID-based temporary name
+   * and immediately PATCH the item to rename it to the original.
+   */
   async uploadSmall(
     accessToken: string,
     parentId: string,
     fileName: string,
     content: ArrayBuffer
   ): Promise<GraphDriveItem> {
-    const url = `${this.base}/me/drive/items/${encodeURIComponent(parentId)}:/${encodeURIComponent(fileName)}:/content`;
+    // Detect problematic characters.
+    const needsRename: boolean = OneDriveApiClient.hasProblematicChars(fileName);
+    const uploadName: string = needsRename
+      ? `tmp_${Date.now()}_${OneDriveApiClient.safeExtension(fileName)}`
+      : fileName;
 
-    return RequestBuilder.put(url)
+    const url = `${this.base}/me/drive/items/${encodeURIComponent(parentId)}`
+      + `:/${encodeURIComponent(uploadName)}:/content`;
+
+    Logger.info(
+      OneDriveApiClient.TAG,
+      `uploadSmall: url=${url} (finalName="${fileName}" uploadName="${uploadName}")`
+    );
+
+    const response = await RequestBuilder.put(url)
       .bearer(accessToken)
       .contentType('application/octet-stream')
       .rawBody(content)
       .executeJson<GraphDriveItem>();
+
+    // If we used a temporary name, rename to the original now.
+    if (needsRename) {
+      Logger.info(
+        OneDriveApiClient.TAG,
+        `uploadSmall: renaming "${uploadName}" → "${fileName}"`
+      );
+      try {
+        const renamed = await this.renameItem(accessToken, response.id, fileName);
+        return renamed;
+      } catch (e) {
+        const err: Error = e as Error;
+        Logger.error(
+          OneDriveApiClient.TAG,
+          `rename after upload failed: ${err.message}`
+        );
+        // Return the item with the temp name — the caller at least has
+        // a working file. The user can rename manually.
+        return response;
+      }
+    }
+
+    return response;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Return true when the filename contains characters that break
+   * Graph's :/path:/ addressing scheme.
+   */
+  private static hasProblematicChars(name: string): boolean {
+    return /[\[\]()#%]/.test(name);
+  }
+
+  /**
+   * Return just the extension (including the dot) for a filename, so
+   * the temporary upload can preserve the file type.
+   */
+  private static safeExtension(name: string): string {
+    const dot: number = name.lastIndexOf('.');
+    if (dot <= 0 || dot === name.length - 1) return '';
+    return name.substring(dot);
   }
 
   async createUploadSession(

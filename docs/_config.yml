@@ -3,4 +3,5 @@ description: A unified cloud file manager for HarmonyOS. OneDrive, Google Drive,
 theme: jekyll-theme-cayman
 lang: en
 show_downloads: false
+baseurl: /CLDrive-HOS
 permalink: /:path/

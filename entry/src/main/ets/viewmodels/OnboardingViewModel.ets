@@ -6,20 +6,30 @@ import { AuthManager } from '../core/auth/AuthManager';
 import { IAuthProvider } from '../core/interfaces/IAuthProvider';
 import { AuthTokens } from '../core/models/AuthTokens';
 import { AccountInfo, makeAccountId } from '../core/models/AccountInfo';
+import { OneDriveApiClient } from '../core/providers/onedrive/OneDriveApiClient';
+import { GraphUser } from '../core/providers/onedrive/OneDriveMapper';
+import { GoogleDriveApiClient } from '../core/providers/googledrive/GoogleDriveApiClient';
+import {
+  GoogleAbout, GoogleUser
+} from '../core/providers/googledrive/GoogleDriveMapper';
+import { DropboxApiClient } from '../core/providers/dropbox/DropboxApiClient';
+import {
+  DropboxCurrentAccount
+} from '../core/providers/dropbox/DropboxMapper';
+import { formatError } from '../utils/ErrorFormatter';
 import { Logger } from '../utils/Logger';
 import { parseQuery } from '../utils/StringUtil';
 import { Routes } from '../utils/RouteConstants';
-import { DropboxApiClient } from '../core/providers/dropbox/DropboxApiClient';
-import { DropboxCurrentAccount } from '../core/providers/dropbox/DropboxMapper';
+
 
 const TAG: string = 'OnboardingViewModel';
 
 export const STEP_SELECT_PROVIDER: number = 0;
-
 export const STEP_AUTHENTICATE: number = 1;
 
 export const MOBILE_USER_AGENT: string =
-  'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+  'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
 export interface ProviderOption {
   type: CloudProviderType;
@@ -56,6 +66,7 @@ export class OnboardingViewModel {
       enabled: true
     }
   ];
+
   private oauthState: string = '';
 
   // ---------------------------------------------------------------------------
@@ -167,44 +178,181 @@ export class OnboardingViewModel {
     return 'provider';
   }
 
+  /**
+   * Fetch the user profile from the specified provider using the newly
+   * issued access token, and construct an AccountInfo record.
+   *
+   * Called once per successful OAuth flow, before the tokens are saved
+   * to TokenStorage. The resulting accountId becomes the storage key
+   * for that account's tokens and preferences.
+   *
+   * Each provider returns a different user-info shape; the mapping
+   * below normalises them all to AccountInfo.
+   */
   private async buildAccountInfo(
     type: CloudProviderType,
     tokens: AuthTokens
   ): Promise<AccountInfo> {
+
+    // =========================================================================
+    // OneDrive — Microsoft Graph /me
+    // =========================================================================
     if (type === CloudProviderType.ONEDRIVE) {
-      // ... existing OneDrive code
+      const api = new OneDriveApiClient();
+      const me: GraphUser = await api.getMe(tokens.accessToken);
+
+      const displayName: string =
+        me.displayName !== undefined
+          && me.displayName !== null
+          && me.displayName.length > 0
+          ? me.displayName
+          : 'OneDrive User';
+
+      let email: string | undefined = undefined;
+      if (me.mail !== undefined && me.mail !== null && me.mail.length > 0) {
+        email = me.mail;
+      } else if (me.userPrincipalName !== undefined
+        && me.userPrincipalName !== null
+        && me.userPrincipalName.length > 0) {
+        email = me.userPrincipalName;
+      }
+
+      // Prefer the email as the unique part of the account ID so the
+      // account remains stable across reinstalls. Fall back to the
+      // Graph user ID if no email is available.
+      const uniquePart: string =
+        email !== undefined && email.length > 0
+          ? email
+          : me.id;
+
+      const accountId: string = makeAccountId(
+        CloudProviderType.ONEDRIVE, uniquePart
+      );
+
+      Logger.info(
+        TAG,
+        `Built OneDrive account: ${accountId} (${displayName})`
+      );
+
+      const account: AccountInfo = {
+        accountId: accountId,
+        provider: CloudProviderType.ONEDRIVE,
+        displayName: displayName,
+        email: email,
+        avatarUrl: undefined,
+        addedAt: Date.now()
+      };
+      return account;
     }
 
+    // =========================================================================
+    // Google Drive — Drive v3 /about
+    // =========================================================================
     if (type === CloudProviderType.GOOGLE_DRIVE) {
-      // ... existing Google Drive code
+      const api = new GoogleDriveApiClient();
+      const about: GoogleAbout = await api.getAbout(tokens.accessToken);
+
+      const user: GoogleUser = about.user !== undefined
+        && about.user !== null
+        ? about.user
+        : {};
+
+      const displayName: string =
+        user.displayName !== undefined
+          && user.displayName !== null
+          && user.displayName.length > 0
+          ? user.displayName
+          : 'Google User';
+
+      const email: string | undefined =
+        user.emailAddress !== undefined
+          && user.emailAddress !== null
+          && user.emailAddress.length > 0
+          ? user.emailAddress
+          : undefined;
+
+      const uniquePart: string =
+        email !== undefined && email.length > 0
+          ? email
+          : 'google_user';
+
+      const accountId: string = makeAccountId(
+        CloudProviderType.GOOGLE_DRIVE, uniquePart
+      );
+
+      Logger.info(
+        TAG,
+        `Built Google Drive account: ${accountId} (${displayName})`
+      );
+
+      const account: AccountInfo = {
+        accountId: accountId,
+        provider: CloudProviderType.GOOGLE_DRIVE,
+        displayName: displayName,
+        email: email,
+        avatarUrl: user.photoLink,
+        addedAt: Date.now()
+      };
+      return account;
     }
 
+    // =========================================================================
+    // Dropbox — Dropbox v2 /users/get_current_account
+    // =========================================================================
     if (type === CloudProviderType.DROPBOX) {
       const api = new DropboxApiClient();
       const account: DropboxCurrentAccount =
         await api.getCurrentAccount(tokens.accessToken);
 
-      const displayName: string =
-        account.name !== undefined
-          && account.name.display_name !== undefined
-          && account.name.display_name.length > 0
-          ? account.name.display_name
-          : 'Dropbox User';
+      // Dropbox nests the display name inside a `name` object.
+      let displayName: string = 'Dropbox User';
+      if (account.name !== undefined
+        && account.name !== null
+        && account.name.display_name !== undefined
+        && account.name.display_name !== null
+        && account.name.display_name.length > 0) {
+        displayName = account.name.display_name;
+      }
+
+      const email: string | undefined =
+        account.email !== undefined
+          && account.email !== null
+          && account.email.length > 0
+          ? account.email
+          : undefined;
+
+      // Dropbox returns a stable `account_id` like "dbid:AABxyz…". Use
+      // that for the account ID so it survives email changes.
+      const uniquePart: string =
+        account.account_id !== undefined
+          && account.account_id !== null
+          && account.account_id.length > 0
+          ? account.account_id
+          : (email !== undefined ? email : 'dropbox_user');
 
       const accountId: string = makeAccountId(
-        CloudProviderType.DROPBOX, account.account_id
+        CloudProviderType.DROPBOX, uniquePart
       );
 
-      return {
+      Logger.info(
+        TAG,
+        `Built Dropbox account: ${accountId} (${displayName})`
+      );
+
+      const info: AccountInfo = {
         accountId: accountId,
         provider: CloudProviderType.DROPBOX,
         displayName: displayName,
-        email: account.email,
+        email: email,
         avatarUrl: account.profile_photo_url,
         addedAt: Date.now()
       };
+      return info;
     }
 
+    // =========================================================================
+    // Unknown provider
+    // =========================================================================
     throw new Error(`Unsupported provider for account creation: ${type}`);
   }
 }

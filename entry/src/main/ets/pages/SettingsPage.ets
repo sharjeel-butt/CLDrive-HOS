@@ -1,8 +1,8 @@
-import { router } from '@kit.ArkUI';
-import { promptAction } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeMode } from '../core/theme/ThemeMode';
 import { ThemeColors } from '../core/theme/ThemeColors';
+import { UiPrefs } from '../core/settings/UiPrefs';
 import { OfflineStore, CacheInfo } from '../core/services/OfflineStore';
 import { Logger } from '../utils/Logger';
 import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
@@ -22,6 +22,13 @@ struct SettingsPage {
   @State private theme: ThemeColors = ThemeManager.get().colors();
   @State private currentMode: ThemeMode = ThemeManager.get().getPreference();
   @State private appearanceExpanded: boolean = true;
+
+  // ---- Collapsing header ----
+  @State private headerCollapsed: boolean = false;
+
+  // ---- UI customization ----
+  @State private collapseSidebarByDefault: boolean = true;
+  @State private uiPrefsLoaded: boolean = false;
 
   // ---- Cache state ----
   @State private cacheFileCount: number = 0;
@@ -58,10 +65,22 @@ struct SettingsPage {
   aboutToAppear(): void {
     ThemeManager.get().subscribe(this.onThemeChange);
     this.loadCacheInfo();
+    this.loadUiPrefs();
   }
 
   aboutToDisappear(): void {
     ThemeManager.get().unsubscribe(this.onThemeChange);
+  }
+
+  private async loadUiPrefs(): Promise<void> {
+    try {
+      this.collapseSidebarByDefault =
+        await UiPrefs.getCollapseSidebarGroups();
+      this.uiPrefsLoaded = true;
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.error(TAG, `loadUiPrefs failed: ${err.message}`);
+    }
   }
 
   private async loadCacheInfo(): Promise<void> {
@@ -159,6 +178,16 @@ struct SettingsPage {
           .backgroundColor(this.theme.surface)
           .borderRadius(14)
 
+          // ---- UI Customization ----
+          this.buildSectionLabel('UI CUSTOMIZATION')
+
+          Column() {
+            this.buildSidebarCollapseRow()
+          }
+          .width('100%')
+          .backgroundColor(this.theme.surface)
+          .borderRadius(14)
+
           // ---- Storage ----
           this.buildSectionLabel('STORAGE')
 
@@ -179,9 +208,9 @@ struct SettingsPage {
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
             this.buildAboutRow('Build', this.buildNumber())
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Provider', 'OneDrive · Google Drive')
+            this.buildAboutRow('Provider', 'OneDrive · Google Drive · Dropbox')
             Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-            this.buildAboutRow('Cloud', 'Microsoft Graph v1.0 · Drive v3')
+            this.buildAboutRow('Cloud', 'Microsoft Graph v1.0 · Drive v3 · Dropbox v2')
           }
           .width('100%')
           .backgroundColor(this.theme.surface)
@@ -195,6 +224,15 @@ struct SettingsPage {
       .layoutWeight(1)
       .width('100%')
       .scrollBar(BarState.Off)
+      .onScroll((xOffset: number, yOffset: number) => {
+        // Collapse once the user has scrolled past ~16 vp; expand again
+        // when they return near the top. Hysteresis via the flag check
+        // avoids re-rendering on every scroll tick.
+        const shouldCollapse: boolean = yOffset > 16;
+        if (shouldCollapse !== this.headerCollapsed) {
+          this.headerCollapsed = shouldCollapse;
+        }
+      })
     }
     .width('100%')
     .height('100%')
@@ -209,23 +247,39 @@ struct SettingsPage {
   buildHeader() {
     Row({ space: 12 }) {
       Text('←')
-        .fontSize(24)
+        .fontSize(this.headerCollapsed ? 20 : 24)
         .fontColor(this.theme.textPrimary)
-        .width(40)
+        .width(this.headerCollapsed ? 32 : 40)
         .textAlign(TextAlign.Center)
         .onClick(() => { router.back(); })
 
-      Text('Settings')
-        .fontSize(22)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(this.theme.textPrimary)
-        .layoutWeight(1)
+      if (!this.headerCollapsed) {
+        Text('Settings')
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.theme.textPrimary)
+          .layoutWeight(1)
+          .transition(TransitionEffect.OPACITY.animation({ duration: 150 }))
+      } else {
+        Row().layoutWeight(1)
+      }
 
-      Row().width(40)
+      Row().width(this.headerCollapsed ? 32 : 40)
     }
     .width('100%')
-    .padding({ left: 8, right: 8, top: 12, bottom: 12 })
+    .height(this.headerCollapsed ? 40 : 52)
+    .padding({
+      left: 8,
+      right: 8,
+      top: this.headerCollapsed ? 6 : 12,
+      bottom: this.headerCollapsed ? 6 : 12
+    })
     .alignItems(VerticalAlign.Center)
+    .backgroundColor(this.theme.background)
+    .animation({
+      duration: 180,
+      curve: Curve.EaseInOut
+    })
   }
 
   @Builder
@@ -331,6 +385,53 @@ struct SettingsPage {
   }
 
   // ---------------------------------------------------------------------------
+  // UI customization section
+  // ---------------------------------------------------------------------------
+
+  @Builder
+  buildSidebarCollapseRow() {
+    Row({ space: 14 }) {
+      Column() {
+        Text('▸')
+          .fontSize(18).fontColor(this.theme.primary)
+      }
+      .width(36).height(36).borderRadius(10)
+      .backgroundColor(this.theme.primarySoft)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+
+      Column({ space: 2 }) {
+        Text('Collapse sidebar groups')
+          .fontSize(15).fontColor(this.theme.textPrimary)
+          .textAlign(TextAlign.Start).width('100%')
+        Text('Provider folders start collapsed each launch')
+          .fontSize(12).fontColor(this.theme.textSecondary)
+          .textAlign(TextAlign.Start).width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Toggle({
+        type: ToggleType.Switch,
+        isOn: this.collapseSidebarByDefault
+      })
+        .selectedColor(this.theme.primary)
+        .enabled(this.uiPrefsLoaded)
+        .onChange((isOn: boolean) => {
+          this.collapseSidebarByDefault = isOn;
+          UiPrefs.setCollapseSidebarGroups(isOn)
+            .catch((e: Error) => {
+              Logger.error(TAG, `setCollapseSidebarGroups failed: ${e.message}`);
+              this.collapseSidebarByDefault = !isOn;
+            });
+        })
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 14, bottom: 14 })
+    .alignItems(VerticalAlign.Center)
+  }
+
+  // ---------------------------------------------------------------------------
   // Storage section
   // ---------------------------------------------------------------------------
 
@@ -397,18 +498,18 @@ struct SettingsPage {
 
   @Builder
   buildAboutRow(label: string, value: string) {
-    Row() {
+    Row({ space: 12 }) {
       Text(label)
         .fontSize(15)
         .fontColor(this.theme.textPrimary)
-        .layoutWeight(1)
 
       Text(value)
         .fontSize(14)
         .fontColor(this.theme.textSecondary)
         .textAlign(TextAlign.End)
-        .maxLines(2)
+        .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 16 })

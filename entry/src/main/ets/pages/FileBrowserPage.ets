@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { router } from '@kit.ArkUI';
+import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
 import {
   FileBrowserViewModel, ProviderGroup, Crumb,
   ActivityGroup,
@@ -1265,6 +1266,27 @@ struct FileBrowserPage {
     .backgroundColor(this.theme.surface).borderRadius(16)
   }
 
+  private appDisplayName(): string {
+    const info: AppVersionInfo = getAppVersionInfo();
+    const name: string = info.appName;
+    // Reject: empty, the em-dash placeholder, or an unresolved resource
+    // reference ("$string:app_name" / "@string/app_name").
+    if (name.length === 0
+      || name === '—'
+      || name.startsWith('$string:')
+      || name.startsWith('@string/')) {
+      return 'CLDrive';
+    }
+    return name;
+  }
+
+  private appSubtitle(): string {
+    const info: AppVersionInfo = getAppVersionInfo();
+    return (info.versionName.length > 0 && info.versionName !== '—')
+      ? `v${info.versionName}`
+      : 'Cloud file manager';
+  }
+
   private currentPickerFolderName(): string {
     if (this.vm.createFolderTargetId === this.vm.currentFolderId) {
       const crumbs: Crumb[] = this.vm.crumbs;
@@ -1740,13 +1762,37 @@ struct FileBrowserPage {
   @Builder
   buildSidebar() {
     Column() {
-      Column({ space: 4 }) {
-        Text('CLDrive')
-          .fontSize(22).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
-        Text('Cloud file manager')
-          .fontSize(12).fontColor(this.theme.textSecondary)
+      Row({ space: 12 }) {
+        Image($r('app.media.app_icon'))
+          .width(40)
+          .height(40)
+          .objectFit(ImageFit.Contain)
+          .draggable(false)
+          .borderRadius(10)
+
+        Column({ space: 2 }) {
+          Text(this.appDisplayName())
+            .fontSize(22)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.theme.textPrimary)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .textAlign(TextAlign.Start)
+            .width('100%')
+
+          Text(this.appSubtitle())
+            .fontSize(12)
+            .fontColor(this.theme.textSecondary)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .textAlign(TextAlign.Start)
+            .width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
       }
-      .alignItems(HorizontalAlign.Start).width('100%')
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
       .padding({ left: 20, right: 20, top: 32, bottom: 20 })
 
       Divider().color(this.theme.divider)

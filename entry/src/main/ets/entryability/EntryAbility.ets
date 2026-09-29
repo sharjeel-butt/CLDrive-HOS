@@ -3,6 +3,7 @@ import { window } from '@kit.ArkUI';
 import { AuthManager } from '../core/auth/AuthManager';
 import { AccountStore } from '../core/auth/AccountStore';
 import { ThemeManager } from '../core/theme/ThemeManager';
+import { UiPrefs } from '../core/settings/UiPrefs';
 import { Routes } from '../utils/RouteConstants';
 import { Logger } from '../utils/Logger';
 import { OfflineStore } from '../core/services/OfflineStore';
@@ -25,6 +26,8 @@ export default class EntryAbility extends UIAbility {
 
     // Initialise theme (loads persisted choice + applies to system).
     await ThemeManager.get().init(this.context);
+
+    await UiPrefs.init(this.context);
 
     await OfflineStore.init(this.context);
     await OperationStore.init(this.context);
@@ -51,10 +54,6 @@ export default class EntryAbility extends UIAbility {
       });
   }
 
-  /**
-   * Called by the system when the device theme flips (or when our own
-   * setColorMode takes effect). Keeps ThemeManager in sync.
-   */
   onConfigurationUpdate(newConfig: Configuration): void {
     Logger.info(TAG, `onConfigurationUpdate colorMode=${newConfig.colorMode}`);
     ThemeManager.get().onSystemColorModeChanged(newConfig.colorMode);

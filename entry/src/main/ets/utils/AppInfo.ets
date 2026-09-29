@@ -56,23 +56,44 @@ export function getAppVersionInfo(): AppVersionInfo {
         ? info.name
         : '—';
 
-    // ---- appName (from the application's label resource) ----
+    // ---- appName (resolved from the label string resource) ----
+    //
+    // On API 26, `appInfo.label` returns the raw reference from
+    // app.json5 (e.g. "$string:app_name") instead of the resolved
+    // string. `appInfo.labelId` is the numeric resource ID we can
+    // actually pass to resourceManager.getStringSync(). Prefer it,
+    // and only accept `label` if it looks like a resolved string
+    // rather than a resource reference.
     let appName: string = '—';
     const appInfo: bundleManager.ApplicationInfo | undefined = info.appInfo;
     if (appInfo !== undefined && appInfo !== null) {
-      // `label` is the string resource ID set in app.json5. Some builds
-      // also expose `labelId` for the resource reference.
-      if (appInfo.label !== undefined && appInfo.label !== null
-        && appInfo.label.length > 0) {
-        appName = appInfo.label;
-      } else if (appInfo.labelId !== undefined && appInfo.labelId > 0) {
-        // Fallback: read the resource by ID if available.
+      // Preferred path: resolve by numeric resource ID.
+      if (appInfo.labelId !== undefined && appInfo.labelId > 0) {
         try {
           appName = getContext().resourceManager.getStringSync(appInfo.labelId);
-        } catch (_) {
-          appName = bundleName;
+        } catch (e) {
+          const err: Error = e as Error;
+          Logger.warn(
+            TAG,
+            `getStringSync(labelId=${appInfo.labelId}) failed: ${err.message}`
+          );
         }
-      } else {
+      }
+
+      // Fallback: accept `label` only if it is not a raw reference.
+      // Raw references look like "$string:app_name" or "@string/app_name".
+      if ((appName === '—' || appName.length === 0)
+        && appInfo.label !== undefined
+        && appInfo.label !== null
+        && appInfo.label.length > 0
+        && !appInfo.label.startsWith('$string:')
+        && !appInfo.label.startsWith('@string/')) {
+        appName = appInfo.label;
+      }
+
+      // Last resort: use the bundle name so the UI never shows a
+      // resource reference.
+      if (appName === '—' || appName.length === 0) {
         appName = bundleName;
       }
     }

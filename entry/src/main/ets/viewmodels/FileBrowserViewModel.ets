@@ -15,6 +15,7 @@ import { CloudItemType } from '../core/models/CloudItemType';
 import { AccountInfo, providerFromAccountId } from '../core/models/AccountInfo';
 import { AuthManager } from '../core/auth/AuthManager';
 import { DownloadInfo } from '../core/models/DownloadInfo';
+import { UiPrefs } from '../core/settings/UiPrefs';
 import {
   Operation, OperationType, OperationStatus, OperationItemKind,
   RetryPayload, canRetry
@@ -104,8 +105,9 @@ export class FileBrowserViewModel {
   isSidebarOpen: boolean = false;
   accounts: AccountInfo[] = [];
   groups: ProviderGroup[] = [];
-  onedriveExpanded: boolean = true;
-  googleExpanded: boolean = true;
+  onedriveExpanded: boolean = false;
+  googleExpanded: boolean = false;
+  dropboxExpanded: boolean = false;
 
   // ---- Selection mode ----
   isSelectionMode: boolean = false;
@@ -170,6 +172,18 @@ export class FileBrowserViewModel {
   async init(): Promise<void> {
     await this.loadOfflineIds();
 
+    // Apply the sidebar collapse preference before any UI renders.
+    try {
+      const collapse: boolean = await UiPrefs.getCollapseSidebarGroups();
+      this.onedriveExpanded = !collapse;
+      this.googleExpanded = !collapse;
+      this.dropboxExpanded = !collapse;
+    } catch (e) {
+      const err: Error = e as Error;
+      Logger.warn(TAG, `Failed to read sidebar preference: ${err.message}`);
+      // Field defaults already leave all groups collapsed.
+    }
+
     const activeId: string = await AuthManager.getActiveAccountId();
     if (activeId.length === 0) {
       router.replaceUrl({ url: Routes.ONBOARDING });
@@ -212,10 +226,12 @@ export class FileBrowserViewModel {
   private buildGroups(accounts: AccountInfo[]): ProviderGroup[] {
     const onedrive: AccountInfo[] = [];
     const google: AccountInfo[] = [];
+    const dropbox: AccountInfo[] = [];
     for (let i = 0; i < accounts.length; i++) {
       const a: AccountInfo = accounts[i];
       if (a.provider === CloudProviderType.ONEDRIVE) onedrive.push(a);
       else if (a.provider === CloudProviderType.GOOGLE_DRIVE) google.push(a);
+      else if (a.provider === CloudProviderType.DROPBOX) dropbox.push(a);
     }
     const groups: ProviderGroup[] = [];
     if (onedrive.length > 0) {
@@ -236,12 +252,22 @@ export class FileBrowserViewModel {
         accounts: google
       });
     }
+    if (dropbox.length > 0) {
+      groups.push({
+        type: CloudProviderType.DROPBOX,
+        label: 'Dropbox',
+        color: '#0061FF',
+        icon: '◆',
+        accounts: dropbox
+      });
+    }
     return groups;
   }
 
   isExpanded(type: CloudProviderType): boolean {
     if (type === CloudProviderType.ONEDRIVE) return this.onedriveExpanded;
     if (type === CloudProviderType.GOOGLE_DRIVE) return this.googleExpanded;
+    if (type === CloudProviderType.DROPBOX) return this.dropboxExpanded;
     return true;
   }
 
@@ -250,6 +276,8 @@ export class FileBrowserViewModel {
       this.onedriveExpanded = !this.onedriveExpanded;
     } else if (type === CloudProviderType.GOOGLE_DRIVE) {
       this.googleExpanded = !this.googleExpanded;
+    } else if (type === CloudProviderType.DROPBOX) {
+      this.dropboxExpanded = !this.dropboxExpanded;
     }
   }
 
@@ -292,6 +320,33 @@ export class FileBrowserViewModel {
       this.errorMessage = readable;
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  /**
+   * Refresh the current folder listing without toggling isLoading.
+   * Used by pull-to-refresh, where the Refresh indicator is the
+   * progress UI and the list must stay on screen.
+   *
+   * Returns true on success. On failure, only surfaces errorMessage
+   * when the list is empty; otherwise the caller can show a toast
+   * and keep the stale list visible.
+   */
+  async refreshCurrentFolder(): Promise<boolean> {
+    if (this.cloudProvider === null) return false;
+    try {
+      const items: CloudItem[] =
+        await this.cloudProvider.listChildren(this.currentFolderId);
+      this.items = items;
+      this.errorMessage = '';
+      return true;
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `refreshCurrentFolder failed: ${readable}`);
+      if (this.items.length === 0) {
+        this.errorMessage = readable;
+      }
+      return false;
     }
   }
 
@@ -2941,12 +2996,14 @@ export class FileBrowserViewModel {
   static colorForProvider(type: CloudProviderType): string {
     if (type === CloudProviderType.ONEDRIVE) return '#0078D4';
     if (type === CloudProviderType.GOOGLE_DRIVE) return '#4285F4';
+    if (type === CloudProviderType.DROPBOX) return '#0061FF';
     return '#666666';
   }
 
   static providerLabel(type: CloudProviderType): string {
     if (type === CloudProviderType.ONEDRIVE) return 'OneDrive';
     if (type === CloudProviderType.GOOGLE_DRIVE) return 'Google Drive';
+    if (type === CloudProviderType.DROPBOX) return 'Dropbox';
     return 'Cloud';
   }
 }

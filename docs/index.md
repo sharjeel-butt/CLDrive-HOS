@@ -8,6 +8,7 @@
 
 **Effective date:** September 29, 2026
 **Last updated:** September 29, 2026
+**Applies to:** CLDrive version 1.1.0 and later
 
 This Privacy Policy describes how CLDrive ("the App", "we", "us", "our") handles your information when you use our HarmonyOS application.
 
@@ -17,7 +18,7 @@ By installing or using CLDrive, you agree to the practices described in this pol
 
 ## 1. Summary
 
-CLDrive is a cloud file manager for HarmonyOS. It connects to third-party cloud storage services that **you** choose — Microsoft OneDrive and Google Drive — and lets you browse, organize, and transfer files stored in those services.
+CLDrive is a cloud file manager for HarmonyOS. It connects to third-party cloud storage services that **you** choose — Microsoft OneDrive, Google Drive, and Dropbox — and lets you browse, organize, and transfer files stored in those services.
 
 **We do not operate any servers that store your files. We do not collect analytics. We do not sell your data. We do not have accounts of our own.**
 
@@ -25,7 +26,7 @@ All data handled by CLDrive falls into one of three categories:
 
 | Category | Where it lives | Who can see it |
 | :--- | :--- | :--- |
-| **Your cloud files** | Your OneDrive / Google Drive account | You, and the third-party provider |
+| **Your cloud files** | Your OneDrive / Google Drive / Dropbox account | You, and the third-party provider |
 | **Authentication tokens** | The App's encrypted sandbox on your device | You, and the App |
 | **App preferences** | The App's local storage on your device | You |
 
@@ -88,7 +89,7 @@ CLDrive does **not** collect, transmit, or store any of the following:
 | Cloud file content | Download to your device, upload to the cloud |
 | Account name and email | Identify which account is active |
 | Authentication tokens | Authenticate API requests to the cloud provider |
-| App preferences (theme, offline list) | Preserve your settings across sessions |
+| App preferences (theme, offline list, task history) | Preserve your settings and activity log across sessions |
 
 ---
 
@@ -101,6 +102,9 @@ When you sign in to OneDrive, your device communicates directly with `graph.micr
 
 ### Google Drive
 When you sign in to Google Drive, your device communicates directly with `googleapis.com` using the Google Drive API. Google's handling of your data is governed by the [Google Privacy Policy](https://policies.google.com/privacy).
+
+### Dropbox
+When you sign in to Dropbox, your device communicates directly with `api.dropboxapi.com` and `content.dropboxapi.com` using the Dropbox API v2. Dropbox's handling of your data is governed by the [Dropbox Privacy Policy](https://www.dropbox.com/privacy).
 
 **No other third parties receive any data.** CLDrive does not embed advertising SDKs, analytics libraries, or telemetry services.
 
@@ -116,11 +120,12 @@ When you sign in to Google Drive, your device communicates directly with `google
 | Account metadata | App sandbox preferences | Until you sign out or uninstall |
 | Task history (last 500 operations) | App sandbox preferences | Rolling 500-item window |
 | Offline files | App sandbox `filesDir` | Until you unmark offline or clear cache |
+| Upload staging files | App sandbox `filesDir/uploads` | Deleted on successful upload, retained on failure for retry |
 | App preferences (theme, etc.) | App sandbox preferences | Until you uninstall |
 
 ### On cloud providers
 
-Your files remain in your OneDrive or Google Drive account under their respective retention policies. Deleting a file through CLDrive removes it from the cloud provider the same way as deleting it through their native apps.
+Your files remain in your OneDrive, Google Drive, or Dropbox account under their respective retention policies. Deleting a file through CLDrive removes it from the cloud provider the same way as deleting it through their native apps.
 
 ---
 
@@ -134,11 +139,15 @@ Open the sidebar → tap **Sign out**. This clears the account's authentication 
 ### Remove offline files
 Open **Settings → Clear cache**. This deletes every locally cached file and clears the offline registry.
 
+### Clear task history
+Open **Tasks** → use **Clear completed**, **Clear all**, or **Force clear**.
+
 ### Revoke app access
 You can revoke CLDrive's access to your cloud account at any time:
 
 - **Microsoft:** [account.live.com/consent/Manage](https://account.live.com/consent/Manage)
 - **Google:** [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
+- **Dropbox:** [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps)
 
 After revoking, CLDrive will no longer be able to access your files even if it still holds tokens.
 
@@ -151,13 +160,13 @@ Uninstalling CLDrive removes every local file, token, and preference from your d
 
 CLDrive implements the following security measures:
 
-- **OAuth 2.0 with PKCE (S256)** for both OneDrive and Google Drive
-- **No client secrets embedded** in the OneDrive flow (PKCE replaces the secret)
+- **OAuth 2.0 with PKCE (S256)** for OneDrive, Google Drive, and Dropbox
+- **No client secrets embedded** for OneDrive and Dropbox (PKCE replaces the secret)
 - **HTTPS-only** communication with cloud providers
 - **State parameter validation** to prevent cross-site request forgery
-- **Encrypted token storage** via HarmonyOS Asset Store
+- **Encrypted token storage** via HarmonyOS Asset Store, with chunked writes to stay under the 1024-byte per-value limit
 - **Automatic token refresh** so expired tokens are never reused
-- **Sandbox-isolated file storage** — offline files cannot be read by other apps
+- **Sandbox-isolated file storage** — offline files and upload staging cannot be read by other apps
 
 No method of transmission over the internet is 100% secure. While we use industry-standard protocols, we cannot guarantee absolute security of data in transit.
 
@@ -187,7 +196,7 @@ Continued use of CLDrive after changes are posted constitutes acceptance of the 
 
 CLDrive is open source. You can inspect the full source code, including every network request the App makes, at:
 
-**[https://github.com/your-org/cldrive](https://github.com/your-org/cldrive)**
+**[https://github.com/sharjeel-butt/CLDrive-HOS](https://github.com/sharjeel-butt/CLDrive-HOS)**
 
 We encourage users to audit the code and verify the practices described in this policy.
 
@@ -197,7 +206,7 @@ We encourage users to audit the code and verify the practices described in this 
 
 Questions about this policy or CLDrive's data handling practices?
 
-- **Email:** sharjeel.butt@gmail.com
+- **GitHub Issues:** [https://github.com/sharjeel-butt/CLDrive-HOS/issues](https://github.com/sharjeel-butt/CLDrive-HOS/issues)
 
 ---
 
@@ -225,8 +234,7 @@ Specifically:
   - It is required by law
 - **Data deletion:** Uninstalling CLDrive removes all locally stored Google user data. Revoking access at [myaccount.google.com/permissions](https://myaccount.google.com/permissions) removes CLDrive's authorization entirely.
 
-### Google API scopes requested
-CLDrive requests the following Google scopes:
+**Google API scopes requested by CLDrive:**
 
 | Scope | Purpose |
 | :--- | :--- |
@@ -235,6 +243,21 @@ CLDrive requests the following Google scopes:
 
 No other Google data is accessed.
 
+### Dropbox API
+CLDrive's use of the Dropbox API complies with the [Dropbox API Terms and Conditions](https://www.dropbox.com/developers/reference/terms) and the [Dropbox Platform Developer Guide](https://www.dropbox.com/developers/reference/developer-guide).
+
+**Dropbox scopes requested by CLDrive:**
+
+| Scope | Purpose |
+| :--- | :--- |
+| `account_info.read` | Read the user's display name and email for the account switcher |
+| `files.metadata.read` | List files and folders and read their metadata |
+| `files.metadata.write` | Create, rename, move, copy, and delete files and folders |
+| `files.content.read` | Download file content |
+| `files.content.write` | Upload file content |
+
+CLDrive does not sell or share Dropbox account data with third parties. Files remain in the user's Dropbox account and are never routed through CLDrive's infrastructure.
+
 ---
 
-*This policy applies to CLDrive version 1.0.0 and later.*
+*This policy applies to CLDrive version 1.1.0 and later.*

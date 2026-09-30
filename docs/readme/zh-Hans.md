@@ -4,16 +4,16 @@
 ```markdown
 ---
 layout: default
-title: CLDrive — 简体中文
+title: CLDrive Manager — 简体中文
 lang: zh-Hans
 permalink: /readme/zh-Hans/
 ---
 
-# CLDrive
+# CLDrive Manager
 
 **HarmonyOS 统一的云文件管理器。**
 
-CLDrive 将 OneDrive、Google Drive 和 Dropbox 整合到一个一致的
+CLDrive Manager 将 OneDrive、Google Drive 和 Dropbox 整合到一个一致的
 文件浏览器中。用一个原生 HarmonyOS 应用管理您拥有的所有云账户——
 支持跨提供商操作、安全的 PKCE 身份验证，以及可扩展的架构，让添加
 新提供商只需编写一个类。
@@ -24,7 +24,7 @@ CLDrive 将 OneDrive、Google Drive 和 Dropbox 整合到一个一致的
 
 **🌐 语言：** [English](/index.md) · [Русский](/readme/ru/) · 简体中文 · [العربية](/readme/ar/) · [Español](/readme/es/)
 
-**📄 [隐私政策](/privacy/zh-Hans/)** · [源代码](https://github.com/sharjeel-butt/CLDrive-HOS)
+**📄 [隐私政策](/privacy/zh-Hans/)** · [源代码](https://github.com/sharjeel-butt/CLDrive Manager-HOS)
 
 ---
 
@@ -104,7 +104,7 @@ CLDrive 将 OneDrive、Google Drive 和 Dropbox 整合到一个一致的
 
 ## 🏗️ 架构
 
-CLDrive 围绕提供商抽象构建。UI 层从不接触特定于提供商的 API——
+CLDrive Manager 围绕提供商抽象构建。UI 层从不接触特定于提供商的 API——
 它与接口对话，工厂在运行时提供正确的实现。
 
 
@@ -141,7 +141,7 @@ CLDrive 围绕提供商抽象构建。UI 层从不接触特定于提供商的 AP
 
 ### 注册自己的 OAuth 应用
 
-CLDrive 是公共 OAuth 客户端，每个用户在三个提供商控制台中注册
+CLDrive Manager 是公共 OAuth 客户端，每个用户在三个提供商控制台中注册
 自己的应用。这使用户完全控制自己的凭据。
 
 **Azure (OneDrive)**
@@ -167,8 +167,8 @@ CLDrive 是公共 OAuth 客户端，每个用户在三个提供商控制台中�
 ### 构建
 
 ```bash
-git clone https://github.com/sharjeel-butt/CLDrive-HOS
-cd CLDrive-HOS
+git clone https://github.com/sharjeel-butt/CLDrive Manager-HOS
+cd CLDrive Manager-HOS
 # 在 DevEco Studio 中打开，然后在设备或模拟器上运行
 
 🗺️ 路线图
@@ -187,6 +187,6 @@ cd CLDrive-HOS
 📄 许可和隐私
 隐私政策 — 简体中文
 
-源代码 — github.com/sharjeel-butt/CLDrive-HOS
+源代码 — github.com/sharjeel-butt/CLDrive Manager-HOS
 
-问题 — github.com/sharjeel-butt/CLDrive-HOS/issues
+问题 — github.com/sharjeel-butt/CLDrive Manager-HOS/issues

@@ -239,7 +239,7 @@ struct PrivacyPolicyPage {
             .enabled(!this.isProcessing)
             .onClick(() => { this.onDecline(); })
 
-          Button(this.isProcessing ? t('priv.saving') : t('priv.agree'))
+          Button(this.isProcessing ? t('common.saving') : t('priv.agree'))
             .layoutWeight(1.5)
             .backgroundColor(this.agreed
               ? this.theme.primary : this.theme.border)

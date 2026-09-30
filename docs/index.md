@@ -1,15 +1,15 @@
 ---
 layout: default
-title: CLDrive
+title: CLDrive Manager
 lang: en
 permalink: /
 ---
 
-# CLDrive
+# CLDrive Manager
 
 **A unified cloud file manager for HarmonyOS.**
 
-CLDrive brings OneDrive, Google Drive, and Dropbox into a single, consistent
+CLDrive Manager brings OneDrive, Google Drive, and Dropbox into a single, consistent
 file browser. Manage every cloud account you own from one native HarmonyOS
 app — with cross-provider operations, secure PKCE authentication, and an
 extensible architecture that makes adding new providers a matter of writing
@@ -21,7 +21,7 @@ one class.
 
 **🌐 Languages:** [English](/CLDrive-HOS/) · [Русский](readme/ru/) · [简体中文](readme/zh-Hans/) · [العربية](readme/ar/) · [Español](readme/es/)
 
-**📄 [Privacy Policy](privacy/en/)** · [Source code](https://github.com/sharjeel-butt/CLDrive-HOS)
+**📄 [Privacy Policy](privacy/en/)** · [Source code](https://github.com/sharjeel-butt/CLDrive-HOS/privacy/en/)
 
 ---
 
@@ -101,7 +101,7 @@ one class.
 
 ## 🏗️ Architecture
 
-CLDrive is built around a provider abstraction. The UI layer never touches a
+CLDrive Manager is built around a provider abstraction. The UI layer never touches a
 provider-specific API — it talks to interfaces, and the factory supplies the
 right implementation at runtime.
 
@@ -159,7 +159,7 @@ Turkish, Italian, Burmese, Polish) will be added incrementally.
 
 ### Register your own OAuth apps
 
-CLDrive is a public OAuth client and each user registers their own app in the
+CLDrive Manager is a public OAuth client and each user registers their own app in the
 three provider consoles. This keeps every user in full control of their own
 credentials.
 
@@ -186,8 +186,8 @@ credentials.
 ### Build
 
 ```bash
-git clone https://github.com/sharjeel-butt/CLDrive-HOS
-cd CLDrive-HOS
+git clone https://github.com/sharjeel-butt/CLDrive Manager-HOS
+cd CLDrive Manager-HOS
 # Open in DevEco Studio, then Run on a device or emulator
 
 🗺️ Roadmap
@@ -207,6 +207,6 @@ cd CLDrive-HOS
 📄 License & Privacy
 Privacy Policy — English
 
-Source code — github.com/sharjeel-butt/CLDrive-HOS
+Source code — github.com/sharjeel-butt/CLDrive Manager-HOS
 
-Issues — github.com/sharjeel-butt/CLDrive-HOS/issues
+Issues — github.com/sharjeel-butt/CLDrive Manager-HOS/issues

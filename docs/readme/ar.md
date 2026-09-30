@@ -4,18 +4,18 @@
 ```markdown
 ---
 layout: default
-title: CLDrive — العربية
+title: CLDrive Manager — العربية
 lang: ar
 permalink: /readme/ar/
 ---
 
 <div dir="rtl" markdown="1">
 
-# CLDrive
+# CLDrive Manager
 
 **مدير ملفات سحابي موحد لنظام HarmonyOS.**
 
-يجمع CLDrive بين OneDrive و Google Drive و Dropbox في متصفح ملفات
+يجمع CLDrive Manager بين OneDrive و Google Drive و Dropbox في متصفح ملفات
 واحد ومتسق. أدِر كل حساباتك السحابية من تطبيق HarmonyOS أصلي واحد —
 مع عمليات عبر المزودين ومصادقة PKCE آمنة وبنية قابلة للتوسع تجعل
 إضافة مزود جديد مسألة كتابة فئة واحدة فقط.
@@ -26,7 +26,7 @@ permalink: /readme/ar/
 
 **🌐 اللغات:** [English](/index.md) · [Русский](/readme/ru/) · [简体中文](/readme/zh-Hans/) · العربية · [Español](/readme/es/)
 
-**📄 [سياسة الخصوصية](/privacy/ar/)** · [الكود المصدري](https://github.com/sharjeel-butt/CLDrive-HOS)
+**📄 [سياسة الخصوصية](/privacy/ar/)** · [الكود المصدري](https://github.com/sharjeel-butt/CLDrive Manager-HOS)
 
 ---
 
@@ -106,7 +106,7 @@ permalink: /readme/ar/
 
 ## 🏗️ البنية
 
-تم بناء CLDrive حول تجريد المزود. طبقة واجهة المستخدم لا تلمس
+تم بناء CLDrive Manager حول تجريد المزود. طبقة واجهة المستخدم لا تلمس
 أبدًا API خاصًا بالمزود — بل تتحدث إلى الواجهات، ويوفر المصنع
 التنفيذ الصحيح في وقت التشغيل.
 
@@ -144,7 +144,7 @@ permalink: /readme/ar/
 
 ### سجّل تطبيقات OAuth الخاصة بك
 
-CLDrive عميل OAuth عام وكل مستخدم يسجّل تطبيقه في لوحات المزودين
+CLDrive Manager عميل OAuth عام وكل مستخدم يسجّل تطبيقه في لوحات المزودين
 الثلاثة. هذا يُبقي كل مستخدم في تحكم كامل ببيانات اعتماده الخاصة.
 
 **Azure (OneDrive)**
@@ -170,8 +170,8 @@ CLDrive عميل OAuth عام وكل مستخدم يسجّل تطبيقه في �
 ### البناء
 
 ```bash
-git clone https://github.com/sharjeel-butt/CLDrive-HOS
-cd CLDrive-HOS
+git clone https://github.com/sharjeel-butt/CLDrive Manager-HOS
+cd CLDrive Manager-HOS
 # افتح في DevEco Studio، ثم شغّل على جهاز أو محاكي
 
 🗺️ خارطة الطريق
@@ -190,6 +190,6 @@ cd CLDrive-HOS
 📄 الترخيص والخصوصية
 سياسة الخصوصية — العربية
 
-الكود المصدري — github.com/sharjeel-butt/CLDrive-HOS
+الكود المصدري — github.com/sharjeel-butt/CLDrive Manager-HOS
 
-المشاكل — github.com/sharjeel-butt/CLDrive-HOS/issues
+المشاكل — github.com/sharjeel-butt/CLDrive Manager-HOS/issues

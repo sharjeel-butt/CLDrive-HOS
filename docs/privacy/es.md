@@ -1,24 +1,24 @@
 ---
 layout: default
-title: Política de Privacidad — CLDrive
+title: Política de Privacidad — CLDrive Manager
 lang: es
 permalink: /privacy/es/
 ---
 
-# Política de Privacidad de CLDrive
+# Política de Privacidad de CLDrive Manager
 
 **Fecha de entrada en vigor:** 29 de septiembre de 2026
 **Última actualización:** 29 de septiembre de 2026
-**Aplica a:** CLDrive versión 1.1.0 y posteriores
+**Aplica a:** CLDrive Manager versión 1.1.0 y posteriores
 
-Esta Política de Privacidad describe cómo CLDrive ("la Aplicación",
+Esta Política de Privacidad describe cómo CLDrive Manager ("la Aplicación",
 "nosotros", "nuestro") maneja tu información cuando usas nuestra aplicación
 para HarmonyOS.
 
-Al instalar o usar CLDrive, aceptas las prácticas descritas en esta
+Al instalar o usar CLDrive Manager, aceptas las prácticas descritas en esta
 política.
 
-**🌐 Idiomas:** [English](/privacy/en/) · [Русский](/privacy/ru/) · [简体中文](/privacy/zh-Hans/) · [العربية](/privacy/ar/) · Español
+**🌐 Idiomas:** [English](https://github.com/sharjeel-butt/CLDrive-HOS/privacy/en/) · [Русский](https://github.com/sharjeel-butt/CLDrive-HOS/privacy/ru/) · 简体中文 · [العربية](https://github.com/sharjeel-butt/CLDrive-HOS/privacy/ar/) · [Español](https://github.com/sharjeel-butt/CLDrive-HOS/privacy/es/)
 
 [← Volver al README](/)
 
@@ -26,7 +26,7 @@ política.
 
 ## 1. Resumen
 
-CLDrive es un gestor de archivos en la nube para HarmonyOS. Se conecta a
+CLDrive Manager es un gestor de archivos en la nube para HarmonyOS. Se conecta a
 servicios de almacenamiento en la nube de terceros que **tú** eliges —
 Microsoft OneDrive, Google Drive y Dropbox — y te permite navegar,
 organizar y transferir archivos almacenados en esos servicios.
@@ -34,7 +34,7 @@ organizar y transferir archivos almacenados en esos servicios.
 **No operamos ningún servidor que almacene tus archivos. No recopilamos
 análisis. No vendemos tus datos. No tenemos cuentas propias.**
 
-Todos los datos manejados por CLDrive pertenecen a una de tres categorías:
+Todos los datos manejados por CLDrive Manager pertenecen a una de tres categorías:
 
 | Categoría | Dónde reside | Quién puede verlo |
 | :--- | :--- | :--- |
@@ -51,7 +51,7 @@ explícitamente.
 
 ### 2.1 Metadatos y contenido de archivos en la nube
 
-Cuando inicias sesión en una cuenta en la nube, CLDrive solicita acceso de
+Cuando inicias sesión en una cuenta en la nube, CLDrive Manager solicita acceso de
 lectura y escritura a los archivos de esa cuenta. Esto permite a la App:
 
 - Listar el contenido de carpetas (nombres, tamaños, marcas de tiempo)
@@ -61,7 +61,7 @@ lectura y escritura a los archivos de esa cuenta. Esto permite a la App:
 - Buscar dentro de la cuenta
 
 **Estos datos se transmiten directamente entre tu dispositivo y el
-proveedor de la nube.** CLDrive nunca los intercepta, registra ni
+proveedor de la nube.** CLDrive Manager nunca los intercepta, registra ni
 reenvía a ningún servidor que controlemos.
 
 ### 2.2 Información de la cuenta
@@ -81,7 +81,7 @@ transmite a ningún lugar.
 
 Los proveedores de la nube emiten tokens de acceso de corta duración y
 tokens de actualización de larga duración después de que autorizas a
-CLDrive. Estos tokens permiten a la App realizar llamadas a la API en tu
+CLDrive Manager. Estos tokens permiten a la App realizar llamadas a la API en tu
 nombre sin volver a preguntarte.
 
 Los tokens se almacenan mediante **HarmonyOS Asset Store** — el
@@ -92,7 +92,7 @@ cifrados en reposo e inaccesibles para otras aplicaciones.
 
 ## 3. Información que NO recopilamos
 
-CLDrive **no** recopila, transmite ni almacena nada de lo siguiente:
+CLDrive Manager **no** recopila, transmite ni almacena nada de lo siguiente:
 
 - Análisis o estadísticas de uso
 - Informes de fallos
@@ -118,7 +118,7 @@ CLDrive **no** recopila, transmite ni almacena nada de lo siguiente:
 
 ## 5. Uso compartido y terceros
 
-CLDrive comparte datos solo con los proveedores de la nube que **conectas
+CLDrive Manager comparte datos solo con los proveedores de la nube que **conectas
 explícitamente**:
 
 ### Microsoft OneDrive
@@ -139,7 +139,7 @@ con `api.dropboxapi.com` y `content.dropboxapi.com` mediante Dropbox API
 v2. El tratamiento de tus datos por parte de Dropbox se rige por la
 [Política de Privacidad de Dropbox](https://www.dropbox.com/privacy).
 
-**Ningún otro tercero recibe dato alguno.** CLDrive no incorpora SDK de
+**Ningún otro tercero recibe dato alguno.** CLDrive Manager no incorpora SDK de
 publicidad, bibliotecas de análisis ni servicios de telemetría.
 
 ---
@@ -170,7 +170,7 @@ Siempre tienes el control total de tus datos:
 
 ### Cerrar sesión en una cuenta
 Abre la barra lateral → toca **Cerrar sesión**. Esto borra los tokens de
-autenticación de la cuenta de Asset Store y elimina la cuenta de CLDrive.
+autenticación de la cuenta de Asset Store y elimina la cuenta de CLDrive Manager.
 Tus archivos en la nube no se tocan.
 
 ### Eliminar archivos sin conexión
@@ -181,7 +181,7 @@ Abre **Tareas** → usa **Borrar completadas**, **Borrar todo** o
 **Borrado forzado**.
 
 ### Revocar el acceso de la App
-Puedes revocar el acceso de CLDrive a tu cuenta en la nube en cualquier
+Puedes revocar el acceso de CLDrive Manager a tu cuenta en la nube en cualquier
 momento:
 
 - **Microsoft:** [account.live.com/consent/Manage](https://account.live.com/consent/Manage)
@@ -189,14 +189,14 @@ momento:
 - **Dropbox:** [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps)
 
 ### Desinstalar
-Desinstalar CLDrive elimina todos los archivos, tokens y preferencias
+Desinstalar CLDrive Manager elimina todos los archivos, tokens y preferencias
 locales de tu dispositivo.
 
 ---
 
 ## 8. Seguridad
 
-CLDrive implementa las siguientes medidas de seguridad:
+CLDrive Manager implementa las siguientes medidas de seguridad:
 
 - **OAuth 2.0 con PKCE (S256)** para OneDrive, Google Drive y Dropbox
 - **Sin secretos de cliente embebidos** para OneDrive y Dropbox
@@ -210,14 +210,14 @@ CLDrive implementa las siguientes medidas de seguridad:
 
 ## 9. Privacidad de menores
 
-CLDrive no está dirigido a menores de 13 años. No recopilamos
+CLDrive Manager no está dirigido a menores de 13 años. No recopilamos
 deliberadamente información personal de menores.
 
 ---
 
 ## 10. Usuarios internacionales
 
-CLDrive almacena todos los datos localmente en tu dispositivo. Ningún dato
+CLDrive Manager almacena todos los datos localmente en tu dispositivo. Ningún dato
 se transfiere a servidores operados por nosotros.
 
 ---
@@ -231,35 +231,35 @@ importantes se anotarán en las notas de la versión de la App.
 
 ## 12. Código abierto
 
-CLDrive es de código abierto:
+CLDrive Manager es de código abierto:
 
-**[https://github.com/sharjeel-butt/CLDrive-HOS](https://github.com/sharjeel-butt/CLDrive-HOS)**
+**[https://github.com/sharjeel-butt/CLDrive Manager-HOS](https://github.com/sharjeel-butt/CLDrive Manager-HOS)**
 
 ---
 
 ## 13. Contacto
 
-- **GitHub Issues:** [https://github.com/sharjeel-butt/CLDrive-HOS/issues](https://github.com/sharjeel-butt/CLDrive-HOS/issues)
+- **GitHub Issues:** [https://github.com/sharjeel-butt/CLDrive Manager-HOS/issues](https://github.com/sharjeel-butt/CLDrive Manager-HOS/issues)
 
 ---
 
 ## 14. Declaraciones de cumplimiento
 
 ### Microsoft Graph API
-El uso de Microsoft Graph por parte de CLDrive cumple con los
+El uso de Microsoft Graph por parte de CLDrive Manager cumple con los
 [Términos de uso de las API de Microsoft](https://learn.microsoft.com/en-us/legal/microsoft-apis/terms-of-use).
 
 Permisos solicitados: `Files.ReadWrite`, `User.Read`, `offline_access`.
 
 ### Google Drive API
-El uso de Google Drive por parte de CLDrive cumple con la
+El uso de Google Drive por parte de CLDrive Manager cumple con la
 [Política de datos de usuario de los servicios de API de Google](https://developers.google.com/terms/api-services-user-data-policy).
 
 **Ámbitos solicitados:** `https://www.googleapis.com/auth/drive.file`,
 `https://www.googleapis.com/auth/drive.metadata.readonly`.
 
 ### Dropbox API
-El uso de la API de Dropbox por parte de CLDrive cumple con los
+El uso de la API de Dropbox por parte de CLDrive Manager cumple con los
 [Términos y condiciones de la API de Dropbox](https://www.dropbox.com/developers/reference/terms).
 
 **Ámbitos solicitados:** `account_info.read`, `files.metadata.read`,
@@ -267,4 +267,4 @@ El uso de la API de Dropbox por parte de CLDrive cumple con los
 
 ---
 
-*Esta política se aplica a CLDrive versión 1.1.0 y posteriores.*
+*Esta política se aplica a CLDrive Manager versión 1.1.0 y posteriores.*

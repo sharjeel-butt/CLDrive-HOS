@@ -17,16 +17,16 @@ struct LanguageSelectionPage {
   @State private theme: ThemeColors = ThemeManager.get().colors();
   @State private selectedCode: LangCode = 'en';
   @State private isProcessing: boolean = false;
-  @State private translationVersion: number = 0;
+
+  @StorageLink('languageVersion') langVersion: number = 0;
 
   private onThemeChanged = (): void => {
     this.theme = ThemeManager.get().colors();
   };
 
   aboutToAppear(): void {
+    this.theme = ThemeManager.get().colors();
     ThemeManager.get().subscribe(this.onThemeChanged);
-    // Preselect based on system locale, but do not apply until the
-    // user taps Continue.
     this.selectedCode = detectSystemLanguage();
   }
 
@@ -40,8 +40,6 @@ struct LanguageSelectionPage {
     try {
       await LanguageManager.set(this.selectedCode);
 
-      // Route to the next gate: privacy policy if not yet accepted,
-      // otherwise the existing auth check.
       const accepted: boolean = await PrivacyPrefs.isAccepted();
       let next: string = Routes.PRIVACY_POLICY;
       if (accepted) {
@@ -59,15 +57,10 @@ struct LanguageSelectionPage {
     }
   }
 
-  private async selectLanguage(option: LanguageOption): Promise<void> {
+  private selectLanguage(option: LanguageOption): void {
+    if (this.isProcessing) return;
     this.selectedCode = option.code;
-    // Preview the language immediately by applying it in-process.
-    // Persistence still happens on Continue.
     LanguageManager.set(option.code)
-      .then(() => {
-        // Re-render so labels update to the newly selected language.
-        this.translationVersion = this.translationVersion + 1;
-      })
       .catch((e: Error) => {
         Logger.error(TAG, `preview language failed: ${e.message}`);
       });
@@ -140,17 +133,21 @@ struct LanguageSelectionPage {
       .padding({ left: 16, right: 16 })
       .scrollBar(BarState.Off)
 
-      // ---- Continue button ----
-      Button(this.isProcessing ? t('priv.saving') : t('lang.continue'))
-        .width('100%')
-        .height(50)
-        .backgroundColor(this.theme.primary)
-        .fontColor(this.theme.primaryContrast)
-        .fontSize(16)
-        .fontWeight(FontWeight.Medium)
-        .enabled(!this.isProcessing)
-        .margin({ left: 20, right: 20, top: 12, bottom: 28 })
-        .onClick(() => { this.onContinue(); })
+      // ---- Continue button — compact, centered ----
+      Row() {
+        Button(this.isProcessing ? t('common.saving') : t('common.continue'))
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .height(40)
+          .padding({ left: 32, right: 32 })
+          .backgroundColor(this.theme.primary)
+          .fontColor(this.theme.primaryContrast)
+          .enabled(!this.isProcessing)
+          .onClick(() => { this.onContinue(); })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .padding({ top: 12, bottom: 24 })
     }
     .width('100%')
     .height('100%')

@@ -1,3 +1,5 @@
+import { t } from '../i18n/I18n';
+
 export enum OperationType {
   COPY = 'copy',
   MOVE = 'move',
@@ -89,12 +91,12 @@ export function createOperation(
 
 export function operationTypeLabel(type: OperationType): string {
   switch (type) {
-    case OperationType.COPY: return 'Copy';
-    case OperationType.MOVE: return 'Move';
-    case OperationType.DELETE: return 'Delete';
-    case OperationType.DOWNLOAD: return 'Download';
-    case OperationType.UPLOAD: return 'Upload';
-    default: return 'Operation';
+    case OperationType.COPY: return t('fb.copy');
+    case OperationType.MOVE: return t('fb.move');
+    case OperationType.DELETE: return t('fb.delete');
+    case OperationType.DOWNLOAD: return t('fb.download');
+    case OperationType.UPLOAD: return t('fb.uploadFile');
+    default: return '';
   }
 }
 
@@ -111,11 +113,11 @@ export function operationTypeIcon(type: OperationType): string {
 
 export function operationStatusLabel(status: OperationStatus): string {
   switch (status) {
-    case OperationStatus.QUEUED: return 'Queued';
-    case OperationStatus.RUNNING: return 'In progress';
-    case OperationStatus.SUCCESS: return 'Done';
-    case OperationStatus.FAILED: return 'Failed';
-    case OperationStatus.CANCELLED: return 'Cancelled';
+    case OperationStatus.QUEUED: return t('fb.queued');
+    case OperationStatus.RUNNING: return t('fb.inProgress');
+    case OperationStatus.SUCCESS: return t('fb.done');
+    case OperationStatus.FAILED: return t('fb.failed');
+    case OperationStatus.CANCELLED: return t('fb.cancelled');
     default: return '';
   }
 }
@@ -138,9 +140,6 @@ export function isFinishedStatus(status: OperationStatus): boolean {
     || status === OperationStatus.CANCELLED;
 }
 
-/**
- * Return true if the operation carries enough information to be retried.
- */
 export function canRetry(op: Operation): boolean {
   if (op.status !== OperationStatus.FAILED
     && op.status !== OperationStatus.CANCELLED) {

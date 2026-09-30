@@ -1,7 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { router } from '@kit.ArkUI';
-import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
-import { t } from '../core/i18n/I18n';
+import { router, promptAction } from '@kit.ArkUI';
 import {
   FileBrowserViewModel, ProviderGroup, Crumb,
   ActivityGroup,
@@ -15,8 +13,7 @@ import { AccountInfo } from '../core/models/AccountInfo';
 import {
   Operation, OperationType, OperationStatus, OperationItemKind,
   operationTypeIcon, operationTypeLabel, operationStatusLabel,
-  operationItemKindIcon, isActiveStatus,
-  canRetry
+  operationItemKindIcon, isActiveStatus, canRetry
 } from '../core/models/Operation';
 import { OperationTracker } from '../core/services/OperationTracker';
 import { ThemeManager } from '../core/theme/ThemeManager';
@@ -24,12 +21,8 @@ import { ThemeColors } from '../core/theme/ThemeColors';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { FileIcon } from '../components/FileIcon';
 import { Routes } from '../utils/RouteConstants';
+import { t, tNamed } from '../core/i18n/I18n';
 
-/**
- * Retry support. Hidden for now — the underlying code in
- * FileBrowserViewModel is preserved and functional. Flip to `true`
- * to bring back both the per-row ↻ button and the Retry All action.
- */
 const RETRY_ENABLED: boolean = true;
 
 @Entry
@@ -38,7 +31,6 @@ struct FileBrowserPage {
   @State vm: FileBrowserViewModel = new FileBrowserViewModel();
   @State private theme: ThemeColors = ThemeManager.get().colors();
 
-  // ---- Page-owned task state ----
   @State private operations: Operation[] = [];
   @State private hasAnyOps: boolean = false;
   @State private canClearCompleted: boolean = false;
@@ -47,11 +39,13 @@ struct FileBrowserPage {
   @State private hasFinishedOps: boolean = false;
   @State private listVersion: number = 0;
 
-  // ---- Tab counts (primitive @State → guaranteed re-render) ----
   @State private tabAllCount: number = 0;
   @State private tabPendingCount: number = 0;
   @State private tabSuccessCount: number = 0;
   @State private tabFailedCount: number = 0;
+
+  @State private isRefreshing: boolean = false;
+
   @StorageLink('languageVersion') langVersion: number = 0;
 
   private crumbScroller: Scroller = new Scroller();
@@ -118,9 +112,13 @@ struct FileBrowserPage {
     this.vm.onPageShow();
   }
 
-  // ===========================================================================
-  // Task grouping (from page @State for real-time updates)
-  // ===========================================================================
+  private async onPullToRefresh(): Promise<void> {
+    const ok: boolean = await this.vm.refreshCurrentFolder();
+    this.isRefreshing = false;
+    if (!ok && this.vm.items.length > 0) {
+      promptAction.showToast({ message: t('fb.couldNotRefresh') });
+    }
+  }
 
   private groupOpsByTab(tab: string): ActivityGroup[] {
     const filtered: Operation[] = [];
@@ -161,10 +159,6 @@ struct FileBrowserPage {
     if (this.vm.activityTab === ACTIVITY_TAB_SUCCESS) return this.tabSuccessCount;
     return this.tabFailedCount;
   }
-
-  // ===========================================================================
-  // Build
-  // ===========================================================================
 
   build() {
     Stack() {
@@ -308,7 +302,7 @@ struct FileBrowserPage {
         Column({ space: 2 }) {
           Text(this.vm.activeAccount !== null
             ? this.vm.activeAccount.displayName
-            : 'Files')
+            : t('fb.files'))
             .fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
             .textAlign(TextAlign.Start).width('100%')
@@ -379,16 +373,6 @@ struct FileBrowserPage {
     .backgroundColor(this.theme.surface)
   }
 
-  // ---------------------------------------------------------------------------
-  // Activity button — icon color reflects current task state
-  //
-  //   Blue    : at least one task is running or queued
-  //   Grey    : no tasks in the history
-  //   Green   : every finished task succeeded
-  //   Yellow  : mixed successes and failures
-  //   Red     : every finished task failed
-  // ---------------------------------------------------------------------------
-
   @Builder
   buildActivityButton() {
     Stack({ alignContent: Alignment.TopEnd }) {
@@ -400,7 +384,6 @@ struct FileBrowserPage {
         .textAlign(TextAlign.Center)
 
       if (this.activeOpCount > 0) {
-        // Red badge with the number of pending tasks.
         Text(`${this.activeOpCount}`)
           .fontSize(10).fontWeight(FontWeight.Bold).fontColor('#FFFFFF')
           .backgroundColor(this.theme.error).borderRadius(9)
@@ -408,7 +391,6 @@ struct FileBrowserPage {
           .constraintSize({ minWidth: 18, minHeight: 18 })
           .textAlign(TextAlign.Center)
       } else if (this.hasAnyOps) {
-        // Quiet dot colored to match the finished-task state.
         Text(' ')
           .width(8).height(8).borderRadius(4)
           .backgroundColor(this.activityStateColor())
@@ -420,33 +402,26 @@ struct FileBrowserPage {
   }
 
   private activityStateColor(): string {
-    // Active work in progress → blue.
     if (this.activeOpCount > 0) {
       return this.theme.primary;
     }
-
-    // Nothing in history → grey.
     if (this.operations.length === 0) {
       return this.theme.textTertiary;
     }
-
-    // Everything is finished. Look at the mix.
     if (this.tabFailedCount === 0 && this.tabSuccessCount > 0) {
-      return this.theme.success;   // all succeeded
+      return this.theme.success;
     }
     if (this.tabSuccessCount === 0 && this.tabFailedCount > 0) {
-      return this.theme.error;     // all failed
+      return this.theme.error;
     }
     if (this.tabSuccessCount > 0 && this.tabFailedCount > 0) {
-      return this.theme.warning;   // mixed
+      return this.theme.warning;
     }
-
-    // Fallback — should not normally reach here.
     return this.theme.textTertiary;
   }
 
   // ===========================================================================
-  // Selection top bar
+  // Selection bars
   // ===========================================================================
 
   @Builder
@@ -457,16 +432,17 @@ struct FileBrowserPage {
         .width(32).textAlign(TextAlign.Center)
         .onClick(() => { this.vm.exitSelectionMode(); })
 
-      Text(`${this.vm.selectedCount()} selected`)
+      Text(tNamed('fb.selectedN',
+        new Map([['n', `${this.vm.selectedCount()}`]])))
         .fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
         .layoutWeight(1)
 
       if (this.vm.allSelected()) {
-        Button('Deselect all')
+        Button(t('fb.deselectAll'))
           .fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.primary)
           .onClick(() => { this.vm.deselectAll(); })
       } else {
-        Button('Select all')
+        Button(t('fb.selectAll'))
           .fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.primary)
           .onClick(() => { this.vm.selectAll(); })
       }
@@ -477,23 +453,19 @@ struct FileBrowserPage {
     .backgroundColor(this.theme.surface)
   }
 
-  // ===========================================================================
-  // Selection action bar
-  // ===========================================================================
-
   @Builder
   buildSelectionActionBar() {
     Row() {
-      this.buildSelectionAction('⧉', 'Copy', (): void => {
+      this.buildSelectionAction('⧉', t('fb.copy'), (): void => {
         this.vm.onBatchCopy();
       })
-      this.buildSelectionAction('→', 'Move', (): void => {
+      this.buildSelectionAction('→', t('fb.move'), (): void => {
         this.vm.onBatchMove();
       })
-      this.buildSelectionAction('⬇', 'Download', (): void => {
+      this.buildSelectionAction('⬇', t('fb.download'), (): void => {
         this.vm.onBatchDownload();
       })
-      this.buildSelectionAction('🗑', 'Delete', (): void => {
+      this.buildSelectionAction('🗑', t('fb.delete'), (): void => {
         this.vm.onBatchDelete();
       })
     }
@@ -514,7 +486,7 @@ struct FileBrowserPage {
   }
 
   // ===========================================================================
-  // Floating glass bottom bar
+  // Bottom bar
   // ===========================================================================
 
   @Builder
@@ -522,7 +494,7 @@ struct FileBrowserPage {
     Row({ space: 12 }) {
       Row({ space: 10 }) {
         Text('🔍').fontSize(16).fontColor(this.theme.primary)
-        Text('Search your files')
+        Text(t('fb.search'))
           .fontSize(14).fontColor(this.theme.textPrimary).layoutWeight(1)
       }
       .layoutWeight(1).height(48)
@@ -628,7 +600,7 @@ struct FileBrowserPage {
 
         TextInput({
           text: this.vm.searchQuery,
-          placeholder: 'Search your files'
+          placeholder: t('fb.searchPlaceholder')
         })
           .fontSize(15)
           .fontColor(this.theme.textPrimary)
@@ -649,13 +621,13 @@ struct FileBrowserPage {
       if (this.vm.isSearching) {
         Column({ space: 12 }) {
           LoadingProgress().width(32).height(32).color(this.theme.primary)
-          Text('Searching...').fontSize(13).fontColor(this.theme.textSecondary)
+          Text(t('fb.searching')).fontSize(13).fontColor(this.theme.textSecondary)
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
       } else if (this.vm.searchError.length > 0) {
         Column({ space: 10 }) {
           Text('🔍').fontSize(42).fontColor(this.theme.textTertiary)
-          Text('Search failed')
+          Text(t('fb.searchFailed'))
             .fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
           Text(this.vm.searchError)
             .fontSize(13).fontColor(this.theme.textSecondary)
@@ -665,9 +637,9 @@ struct FileBrowserPage {
       } else if (this.vm.searchQuery.trim().length === 0) {
         Column({ space: 10 }) {
           Text('🔍').fontSize(42).fontColor(this.theme.textTertiary)
-          Text('Start typing to search')
+          Text(t('fb.startTyping'))
             .fontSize(14).fontColor(this.theme.textSecondary)
-          Text('Search across all files in your drive.')
+          Text(t('fb.searchDesc'))
             .fontSize(12).fontColor(this.theme.textTertiary)
             .textAlign(TextAlign.Center).padding({ left: 32, right: 32 })
         }
@@ -675,7 +647,7 @@ struct FileBrowserPage {
       } else if (this.vm.searchResults.length === 0) {
         Column({ space: 10 }) {
           Text('📂').fontSize(42).fontColor(this.theme.textTertiary)
-          Text('No files match your search')
+          Text(t('fb.noSearchResults'))
             .fontSize(14).fontColor(this.theme.textSecondary)
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
@@ -715,7 +687,7 @@ struct FileBrowserPage {
           Text(FileBrowserViewModel.formatSize(item.size))
             .fontSize(12).fontColor(this.theme.textSecondary)
         } else {
-          Text('Folder').fontSize(12).fontColor(this.theme.textSecondary)
+          Text(t('fb.folder')).fontSize(12).fontColor(this.theme.textSecondary)
         }
       }
       .alignItems(HorizontalAlign.Start).layoutWeight(1)
@@ -735,29 +707,31 @@ struct FileBrowserPage {
     if (this.vm.isLoading) {
       Column({ space: 12 }) {
         LoadingProgress().width(36).height(36).color(this.theme.primary)
-        Text('Loading...').fontSize(13).fontColor(this.theme.textSecondary)
+        Text(t('fb.loading')).fontSize(13).fontColor(this.theme.textSecondary)
       }
       .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
     } else if (this.vm.errorMessage.length > 0) {
       Column({ space: 12 }) {
-        Text('Something went wrong')
+        Text(t('fb.somethingWrong'))
           .fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
         Text(this.vm.errorMessage)
           .fontSize(13).fontColor(this.theme.textSecondary)
           .textAlign(TextAlign.Center)
-        Button('Retry').onClick(() => {
+        Button(t('common.retry')).onClick(() => {
           this.vm.loadFolder(this.vm.currentFolderId);
         })
       }
       .layoutWeight(1).justifyContent(FlexAlign.Center).padding(24).width('100%')
     } else if (this.vm.items.length === 0) {
-      Column({ space: 12 }) {
-        Text('📂').fontSize(48)
-        Text('This folder is empty')
-          .fontSize(15).fontColor(this.theme.textSecondary)
-      }
-      .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
+      this.buildEmptyStateWithRefresh()
     } else {
+      this.buildListWithRefresh()
+    }
+  }
+
+  @Builder
+  buildListWithRefresh() {
+    Refresh({ refreshing: $$this.isRefreshing }) {
       List({ space: 1 }) {
         ForEach(this.vm.items, (item: CloudItem) => {
           ListItem() { this.buildItemRow(item) }
@@ -765,9 +739,38 @@ struct FileBrowserPage {
 
         ListItem() { Row().height(100) }
       }
-      .layoutWeight(1).width('100%')
+      .width('100%')
+      .height('100%')
       .divider({ strokeWidth: 1, color: this.theme.divider })
+      .edgeEffect(EdgeEffect.Spring)
+      .scrollBar(BarState.Off)
     }
+    .onRefreshing(() => { this.onPullToRefresh(); })
+    .layoutWeight(1)
+    .width('100%')
+  }
+
+  @Builder
+  buildEmptyStateWithRefresh() {
+    Refresh({ refreshing: $$this.isRefreshing }) {
+      Scroll() {
+        Column({ space: 12 }) {
+          Text('📂').fontSize(48)
+          Text(t('fb.emptyFolder'))
+            .fontSize(15).fontColor(this.theme.textSecondary)
+        }
+        .width('100%')
+        .height(400)
+        .justifyContent(FlexAlign.Center)
+      }
+      .width('100%')
+      .height('100%')
+      .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
+    }
+    .onRefreshing(() => { this.onPullToRefresh(); })
+    .layoutWeight(1)
+    .width('100%')
   }
 
   @Builder
@@ -917,7 +920,7 @@ struct FileBrowserPage {
         Text(`${FileBrowserViewModel.formatSize(this.vm.selectedItem.size)} · ${FileBrowserViewModel.formatDate(this.vm.selectedItem.modifiedAt)}`)
           .fontSize(13).fontColor(this.theme.textSecondary)
       } else if (this.vm.selectedItem !== null) {
-        Text(`Folder · ${FileBrowserViewModel.formatDate(this.vm.selectedItem.modifiedAt)}`)
+        Text(`${t('fb.folder')} · ${FileBrowserViewModel.formatDate(this.vm.selectedItem.modifiedAt)}`)
           .fontSize(13).fontColor(this.theme.textSecondary)
       }
     }
@@ -930,7 +933,7 @@ struct FileBrowserPage {
     Row() {
       Column({ space: 6 }) {
         Text('🗑').fontSize(26)
-        Text('Delete').fontSize(14).fontColor(this.theme.error)
+        Text(t('fb.delete')).fontSize(14).fontColor(this.theme.error)
       }
       .width('100%').padding({ top: 20, bottom: 20 })
       .backgroundColor(this.theme.surfaceSubtle).borderRadius(12)
@@ -945,7 +948,7 @@ struct FileBrowserPage {
     Row({ space: 16 }) {
       Text('📂').fontSize(22).fontColor(this.theme.textSecondary)
         .width(28).textAlign(TextAlign.Center)
-      Text('Open').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+      Text(t('fb.open')).fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
     .width('100%')
     .padding({ left: 24, right: 24, top: 14, bottom: 14 })
@@ -971,7 +974,7 @@ struct FileBrowserPage {
       }
       Text(this.vm.selectedItem !== null
         && this.vm.isDownloading(this.vm.selectedItem.id)
-        ? 'Downloading...' : 'Download')
+        ? t('fb.downloading') : t('fb.download'))
         .fontSize(16)
         .fontColor(this.vm.canDownloadSelected()
           ? this.theme.textPrimary : this.theme.textTertiary)
@@ -987,7 +990,7 @@ struct FileBrowserPage {
     Row({ space: 16 }) {
       Text('☁').fontSize(22).fontColor(this.theme.textSecondary)
         .width(28).textAlign(TextAlign.Center)
-      Text('Make available offline').fontSize(16).fontColor(this.theme.textPrimary)
+      Text(t('fb.makeOffline')).fontSize(16).fontColor(this.theme.textPrimary)
         .layoutWeight(1)
 
       Toggle({
@@ -1013,7 +1016,7 @@ struct FileBrowserPage {
     Row({ space: 16 }) {
       Text('✎').fontSize(22).fontColor(this.theme.textSecondary)
         .width(28).textAlign(TextAlign.Center)
-      Text('Rename').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+      Text(t('fb.rename')).fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
     .width('100%')
     .padding({ left: 24, right: 24, top: 14, bottom: 14 })
@@ -1025,7 +1028,7 @@ struct FileBrowserPage {
     Row({ space: 16 }) {
       Text('→').fontSize(22).fontColor(this.theme.textSecondary)
         .width(28).textAlign(TextAlign.Center)
-      Text('Move').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+      Text(t('fb.move')).fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
     .width('100%')
     .padding({ left: 24, right: 24, top: 14, bottom: 14 })
@@ -1037,7 +1040,7 @@ struct FileBrowserPage {
     Row({ space: 16 }) {
       Text('⧉').fontSize(22).fontColor(this.theme.textSecondary)
         .width(28).textAlign(TextAlign.Center)
-      Text('Copy').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+      Text(t('fb.copy')).fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
     .width('100%')
     .padding({ left: 24, right: 24, top: 14, bottom: 14 })
@@ -1049,7 +1052,7 @@ struct FileBrowserPage {
     Row({ space: 16 }) {
       Text('ⓘ').fontSize(22).fontColor(this.theme.textSecondary)
         .width(28).textAlign(TextAlign.Center)
-      Text('Details').fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
+      Text(t('fb.details')).fontSize(16).fontColor(this.theme.textPrimary).layoutWeight(1)
     }
     .width('100%')
     .padding({ left: 24, right: 24, top: 14, bottom: 14 })
@@ -1063,11 +1066,11 @@ struct FileBrowserPage {
   @Builder
   buildRenameDialog() {
     Column({ space: 16 }) {
-      Text('Rename')
+      Text(t('fb.renameTitle'))
         .fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
         .width('100%').textAlign(TextAlign.Start)
 
-      TextInput({ text: this.vm.renameText, placeholder: 'New name' })
+      TextInput({ text: this.vm.renameText, placeholder: t('fb.renamePlaceholder') })
         .fontSize(15)
         .fontColor(this.theme.textPrimary)
         .placeholderColor(this.theme.textTertiary)
@@ -1075,13 +1078,13 @@ struct FileBrowserPage {
         .onChange((value: string) => { this.vm.renameText = value; })
 
       Row({ space: 12 }) {
-        Button('Cancel')
+        Button(t('common.cancel'))
           .layoutWeight(1)
           .backgroundColor(this.theme.chipBg)
           .fontColor(this.theme.textPrimary)
           .onClick(() => { this.vm.cancelRename(); })
 
-        Button(this.vm.isProcessing ? 'Renaming...' : 'Rename')
+        Button(this.vm.isProcessing ? t('fb.renaming') : t('fb.rename'))
           .layoutWeight(1)
           .backgroundColor(this.theme.primary)
           .fontColor(this.theme.primaryContrast)
@@ -1112,7 +1115,7 @@ struct FileBrowserPage {
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(TextAlign.Start).layoutWeight(1)
 
-        Button('New folder')
+        Button(t('fb.newFolder'))
           .fontSize(13)
           .backgroundColor(this.theme.primarySoft)
           .fontColor(this.theme.primary)
@@ -1156,13 +1159,13 @@ struct FileBrowserPage {
       if (this.vm.movePickerLoading) {
         Column({ space: 12 }) {
           LoadingProgress().width(32).height(32).color(this.theme.primary)
-          Text('Loading folders...')
+          Text(t('fb.loadingFolders'))
             .fontSize(13).fontColor(this.theme.textSecondary)
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
       } else if (this.vm.movePickerError.length > 0) {
         Column({ space: 12 }) {
-          Text('Could not load folders')
+          Text(t('fb.couldNotLoadFolders'))
             .fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
           Text(this.vm.movePickerError)
             .fontSize(13).fontColor(this.theme.textSecondary)
@@ -1172,9 +1175,9 @@ struct FileBrowserPage {
       } else if (this.vm.movePickerItems.length === 0) {
         Column({ space: 10 }) {
           Text('📁').fontSize(42)
-          Text('No subfolders here')
+          Text(t('fb.noSubfolders'))
             .fontSize(14).fontColor(this.theme.textSecondary)
-          Text('You can still use this folder, or create a new one.')
+          Text(t('fb.noSubfoldersHint'))
             .fontSize(12).fontColor(this.theme.textTertiary)
             .textAlign(TextAlign.Center).padding({ left: 32, right: 32 })
         }
@@ -1203,7 +1206,7 @@ struct FileBrowserPage {
 
       Divider().color(this.theme.divider)
       Row({ space: 12 }) {
-        Button('Cancel')
+        Button(t('common.cancel'))
           .layoutWeight(1)
           .backgroundColor(this.theme.chipBg)
           .fontColor(this.theme.textPrimary)
@@ -1268,34 +1271,13 @@ struct FileBrowserPage {
     .backgroundColor(this.theme.surface).borderRadius(16)
   }
 
-  private appDisplayName(): string {
-    const info: AppVersionInfo = getAppVersionInfo();
-    const name: string = info.appName;
-    // Reject: empty, the em-dash placeholder, or an unresolved resource
-    // reference ("$string:app_name" / "@string/app_name").
-    if (name.length === 0
-      || name === '—'
-      || name.startsWith('$string:')
-      || name.startsWith('@string/')) {
-      return 'CLDrive';
-    }
-    return name;
-  }
-
-  private appSubtitle(): string {
-    const info: AppVersionInfo = getAppVersionInfo();
-    return (info.versionName.length > 0 && info.versionName !== '—')
-      ? `v${info.versionName}`
-      : 'Cloud file manager';
-  }
-
   private currentPickerFolderName(): string {
     if (this.vm.createFolderTargetId === this.vm.currentFolderId) {
       const crumbs: Crumb[] = this.vm.crumbs;
       if (crumbs.length > 0) return crumbs[crumbs.length - 1].name;
     }
     const pickerCrumbs: Crumb[] = this.vm.movePickerCrumbs;
-    if (pickerCrumbs.length === 0) return 'Root';
+    if (pickerCrumbs.length === 0) return t('fb.files');
     return pickerCrumbs[pickerCrumbs.length - 1].name;
   }
 
@@ -1312,7 +1294,6 @@ struct FileBrowserPage {
         .margin({ top: 8, bottom: 12 })
 
       Row() {
-        // In buildActivityPanel(), the header block:
         Column({ space: 2 }) {
           Text(t('fb.tasks'))
             .fontSize(18).fontWeight(FontWeight.Bold)
@@ -1345,7 +1326,6 @@ struct FileBrowserPage {
         this.buildActivityGroups()
       }
 
-      // ---- Retry All — only in the Failed tab when there are failures ----
       if (RETRY_ENABLED
         && this.vm.activityTab === ACTIVITY_TAB_FAILED
         && this.tabFailedCount > 0) {
@@ -1366,9 +1346,9 @@ struct FileBrowserPage {
       if (this.hasAnyOps) {
         Divider().color(this.theme.divider)
         Row({ space: 6 }) {
-          // ---- Clear completed ----
           Row({ space: 4 }) {
-            Text('✓').fontSize(12)
+            Text('✓')
+              .fontSize(12)
               .fontColor(this.canClearCompleted
                 ? this.theme.textPrimary : this.theme.textTertiary)
             Text(t('fb.clearCompleted'))
@@ -1388,9 +1368,9 @@ struct FileBrowserPage {
             }
           })
 
-          // ---- Clear all ----
           Row({ space: 4 }) {
-            Text('🗑').fontSize(12)
+            Text('🗑')
+              .fontSize(12)
               .fontColor(this.canClearAll
                 ? this.theme.textPrimary : this.theme.textTertiary)
             Text(t('fb.clearAll'))
@@ -1410,11 +1390,13 @@ struct FileBrowserPage {
             }
           })
 
-          // ---- Force clear ----
           Row({ space: 4 }) {
-            Text('⚠').fontSize(12).fontColor(this.theme.error)
+            Text('⚠')
+              .fontSize(12)
+              .fontColor(this.theme.error)
             Text(t('fb.forceClear'))
-              .fontSize(11).fontColor(this.theme.error)
+              .fontSize(11)
+              .fontColor(this.theme.error)
           }
           .height(32)
           .padding({ left: 10, right: 10 })
@@ -1449,11 +1431,6 @@ struct FileBrowserPage {
     .width('100%')
     .padding({ left: 16, right: 16, bottom: 12 })
   }
-
-  // ---------------------------------------------------------------------------
-  // Tab pills — each reads its @State count directly so ArkUI re-renders
-  // the pill the instant the count changes.
-  // ---------------------------------------------------------------------------
 
   @Builder
   buildTabAll() {
@@ -1580,37 +1557,6 @@ struct FileBrowserPage {
   }
 
   @Builder
-  buildActivityTab(key: string, label: string, count: number) {
-    Row({ space: 4 }) {
-      Text(label)
-        .fontSize(12)
-        .fontWeight(this.vm.activityTab === key
-          ? FontWeight.Medium : FontWeight.Normal)
-        .fontColor(this.vm.activityTab === key
-          ? this.theme.primaryContrast : this.theme.textSecondary)
-
-      Text(`${count}`)
-        .fontSize(10)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.vm.activityTab === key
-          ? this.theme.primaryContrast : this.theme.textTertiary)
-        .backgroundColor(this.vm.activityTab === key
-          ? '#33FFFFFF' : this.theme.chipBg)
-        .borderRadius(8)
-        .padding({ left: 5, right: 5, top: 1, bottom: 1 })
-        .constraintSize({ minWidth: 14 })
-        .textAlign(TextAlign.Center)
-    }
-    .height(30)
-    .padding({ left: 10, right: 8 })
-    .backgroundColor(this.vm.activityTab === key
-      ? this.theme.primary : this.theme.chipBg)
-    .borderRadius(15)
-    .alignItems(VerticalAlign.Center)
-    .onClick(() => { this.vm.setActivityTab(key); })
-  }
-
-  @Builder
   buildActivityGroups() {
     List({ space: 1 }) {
       ForEach(this.groupOpsByTab(this.vm.activityTab),
@@ -1691,15 +1637,15 @@ struct FileBrowserPage {
           .textAlign(TextAlign.Start).width('100%')
 
         Row({ space: 6 }) {
-          Text(this.operationTypeLabelLocal(op.type))
+          Text(operationTypeLabel(op.type))
             .fontSize(11).fontColor(this.theme.textSecondary)
           if (op.batchTotal > 0) {
-            Text(`· ${op.batchIndex} of ${op.batchTotal}`)
+            Text(`· ${op.batchIndex} / ${op.batchTotal}`)
               .fontSize(11).fontColor(this.theme.textSecondary)
           }
           Text(`· ${op.isRetry && op.status === OperationStatus.RUNNING
             ? t('fb.retrying')
-            : this.statusLabel(op.status)}`)
+            : operationStatusLabel(op.status)}`)
             .fontSize(11).fontColor(this.statusColor(op.status))
         }
 
@@ -1717,7 +1663,6 @@ struct FileBrowserPage {
       }
       .alignItems(HorizontalAlign.Start).layoutWeight(1)
 
-      // ---- Right-side status indicator ----
       if (RETRY_ENABLED && canRetry(op)) {
         Text('↻')
           .fontSize(20)
@@ -1777,7 +1722,7 @@ struct FileBrowserPage {
             .textAlign(TextAlign.Start)
             .width('100%')
 
-          Text(this.appSubtitle())
+          Text(t('app.tagline'))
             .fontSize(12)
             .fontColor(this.theme.textSecondary)
             .maxLines(1)
@@ -1824,6 +1769,10 @@ struct FileBrowserPage {
     }
     .width(280).height('100%')
     .backgroundColor(this.theme.surface)
+  }
+
+  private appDisplayName(): string {
+    return 'CLDrive';
   }
 
   @Builder
@@ -1936,27 +1885,5 @@ struct FileBrowserPage {
     .backgroundColor(account.accountId === this.vm.activeAccountId
       ? this.theme.chipSelectedBg : Color.Transparent)
     .onClick(() => { this.vm.onSwitchAccount(account.accountId); })
-  }
-
-  private statusLabel(status: OperationStatus): string {
-    switch (status) {
-      case OperationStatus.QUEUED: return t('fb.queued');
-      case OperationStatus.RUNNING: return t('fb.inProgress');
-      case OperationStatus.SUCCESS: return t('fb.done');
-      case OperationStatus.FAILED: return t('fb.failed');
-      case OperationStatus.CANCELLED: return t('fb.cancelled');
-      default: return '';
-    }
-  }
-
-  private operationTypeLabelLocal(type: OperationType): string {
-    switch (type) {
-      case OperationType.COPY: return t('fb.copy');
-      case OperationType.MOVE: return t('fb.move');
-      case OperationType.DELETE: return t('fb.delete');
-      case OperationType.DOWNLOAD: return t('fb.download');
-      case OperationType.UPLOAD: return t('fb.uploadFile');
-      default: return '';
-    }
   }
 }

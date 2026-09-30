@@ -14,12 +14,10 @@ const EN: TranslationMap = new Map<string, string>([
   ['common.cancel',        'Cancel'],
   ['common.retry',         'Retry'],
   ['common.exit',          'Exit'],
-  ['priv.exit',          'Exit'],
   ['common.saving',        'Saving...'],
   ['common.deleting',      'Deleting...'],
   ['common.close',         'Close'],
   ['common.loading',       'Loading...'],
-  ['details.open',         'Open'],
 
   // ---- Language picker ----
   ['lang.title',           'Choose your language'],
@@ -46,6 +44,7 @@ const EN: TranslationMap = new Map<string, string>([
   ['priv.agreeCheck',      'I have read and agree to the Privacy Policy'],
   ['priv.decline',         'Decline'],
   ['priv.agree',           'Agree & Continue'],
+  ['priv.saving',          'Saving...'],
   ['priv.declineTitle',    'Decline privacy policy?'],
   ['priv.declineBody',     'You must agree to the Privacy Policy to use CLDrive. Declining will close the app.'],
   ['priv.goBack',          'Go back'],
@@ -131,10 +130,12 @@ const EN: TranslationMap = new Map<string, string>([
 
   // ---- File browser — selection ----
   ['fb.selected',              'selected'],
+  ['fb.selectedN',             '{n} selected'],
   ['fb.selectAll',             'Select all'],
   ['fb.deselectAll',           'Deselect all'],
   ['fb.copy',                  'Copy'],
   ['fb.move',                  'Move'],
+  ['fb.moving',                'Moving...'],
   ['fb.download',              'Download'],
   ['fb.downloading',           'Downloading...'],
   ['fb.delete',                'Delete'],
@@ -279,6 +280,22 @@ const EN: TranslationMap = new Map<string, string>([
   ['fb.missingDownloadDest',   'Missing download destination for retry'],
   ['fb.copyTakingLong',        'Copy is taking longer than expected.'],
 
+  // ---- Date labels ----
+  ['fb.today',                 'Today'],
+  ['fb.yesterday',             'Yesterday'],
+  ['fb.month.jan',             'Jan'],
+  ['fb.month.feb',             'Feb'],
+  ['fb.month.mar',             'Mar'],
+  ['fb.month.apr',             'Apr'],
+  ['fb.month.may',             'May'],
+  ['fb.month.jun',             'Jun'],
+  ['fb.month.jul',             'Jul'],
+  ['fb.month.aug',             'Aug'],
+  ['fb.month.sep',             'Sep'],
+  ['fb.month.oct',             'Oct'],
+  ['fb.month.nov',             'Nov'],
+  ['fb.month.dec',             'Dec'],
+
   // ---- Item details ----
   ['details.title',            'Details'],
   ['details.loading',          'Loading...'],
@@ -362,26 +379,14 @@ const ZH_HANS: TranslationMap = new Map<string, string>([
   ['common.cancel',        '取消'],
   ['common.retry',         '重试'],
   ['common.exit',          '退出'],
-  ['priv.exit',          '退出'],
   ['common.loading',       '加载中...'],
+  ['common.saving',        '正在保存...'],
   ['lang.title',           '选择您的语言'],
   ['lang.subtitle',        '您可以稍后在设置中更改'],
   ['lang.section.all',     '所有语言'],
   ['priv.title',           '在继续之前'],
   ['priv.subtitle',        '请阅读并接受我们的隐私政策'],
   ['priv.header',          '隐私政策'],
-  ['priv.point1.title',    '您的数据保留在您的设备上'],
-  ['priv.point1.body',     'CLDrive 不运营任何服务器。您的文件和账户数据永远不会发送给我们。'],
-  ['priv.point2.title',    '直接连接云端'],
-  ['priv.point2.body',     '文件在您的设备和您选择的云服务提供商（OneDrive、Google Drive 或 Dropbox）之间直接传输。'],
-  ['priv.point3.title',    '无跟踪，无分析'],
-  ['priv.point3.body',     '我们不收集分析数据、崩溃报告、设备标识符、位置数据或使用统计。'],
-  ['priv.point4.title',    '安全的令牌存储'],
-  ['priv.point4.body',     'OAuth 令牌存储在 HarmonyOS Asset Store——操作系统硬件加密的存储中。'],
-  ['priv.point5.title',    '仅限已连接的提供商'],
-  ['priv.point5.body',     '数据仅与您明确连接的云服务提供商共享。没有广告 SDK，没有遥测服务。'],
-  ['priv.point6.title',    '您掌控一切'],
-  ['priv.point6.body',     '随时退出登录、清除离线文件、清除任务历史或撤销应用访问权限。'],
   ['priv.viewOnline',      '在线查看完整政策'],
   ['priv.agreeCheck',      '我已阅读并同意隐私政策'],
   ['priv.decline',         '拒绝'],
@@ -391,7 +396,7 @@ const ZH_HANS: TranslationMap = new Map<string, string>([
   ['priv.declineTitle',    '拒绝隐私政策？'],
   ['priv.declineBody',     '您必须同意隐私政策才能使用 CLDrive。拒绝将关闭应用。'],
   ['viewer.title',         '隐私政策'],
-  ['viewer.loading',       '正在加载政策...'],
+  ['viewer.loading',       '正在加载...'],
   ['viewer.error',         '无法加载政策'],
   ['viewer.retryFailed',   '重试失败。请检查您的网络连接。'],
   ['set.title',            '设置'],
@@ -403,7 +408,6 @@ const ZH_HANS: TranslationMap = new Map<string, string>([
   ['set.darkMode',         '深色模式'],
   ['set.theme.light',      '浅色'],
   ['set.theme.lightSub',   '始终使用浅色主题'],
-  ['details.open',         '打开'],
   ['set.theme.dark',       '深色'],
   ['set.theme.darkSub',    '始终使用深色主题'],
   ['set.theme.system',     '使用系统设置'],
@@ -449,13 +453,21 @@ const ZH_HANS: TranslationMap = new Map<string, string>([
   ['fb.searchPlaceholder', '搜索文件'],
   ['fb.searching',         '搜索中...'],
   ['fb.folder',            '文件夹'],
+  ['fb.selected',          '已选'],
+  ['fb.selectedN',         '已选 {n} 项'],
+  ['fb.selectAll',         '全选'],
+  ['fb.deselectAll',       '取消全选'],
   ['fb.copy',              '复制'],
   ['fb.move',              '移动'],
+  ['fb.moving',            '正在移动...'],
   ['fb.download',          '下载'],
+  ['fb.downloading',       '正在下载...'],
   ['fb.delete',            '删除'],
   ['fb.open',              '打开'],
   ['fb.rename',            '重命名'],
+  ['fb.renaming',          '正在重命名...'],
   ['fb.details',           '详情'],
+  ['fb.makeOffline',       '设为离线可用'],
   ['fb.newFolder',         '新建文件夹'],
   ['fb.uploadFile',        '上传文件'],
   ['fb.uploadFolder',      '上传文件夹'],
@@ -565,6 +577,20 @@ const ZH_HANS: TranslationMap = new Map<string, string>([
   ['fb.uploadFailed',      '上传失败'],
   ['fb.forceClearTitle',   '强制清除所有任务？'],
   ['fb.forceClearMsg',     '这将移除任务列表中的每一项，包括仍在运行的任务。后台工作将继续，但您将不再看到其状态。是否继续？'],
+  ['fb.today',             '今天'],
+  ['fb.yesterday',         '昨天'],
+  ['fb.month.jan',         '1月'],
+  ['fb.month.feb',         '2月'],
+  ['fb.month.mar',         '3月'],
+  ['fb.month.apr',         '4月'],
+  ['fb.month.may',         '5月'],
+  ['fb.month.jun',         '6月'],
+  ['fb.month.jul',         '7月'],
+  ['fb.month.aug',         '8月'],
+  ['fb.month.sep',         '9月'],
+  ['fb.month.oct',         '10月'],
+  ['fb.month.nov',         '11月'],
+  ['fb.month.dec',         '12月'],
   ['details.title',        '详情'],
   ['details.loading',      '加载中...'],
   ['details.couldNotLoad', '无法加载详情'],
@@ -615,27 +641,14 @@ const AR: TranslationMap = new Map<string, string>([
   ['common.cancel',        'إلغاء'],
   ['common.retry',         'إعادة المحاولة'],
   ['common.exit',          'خروج'],
-  ['priv.exit',          'خروج'],
   ['common.loading',       'جاري التحميل...'],
+  ['common.saving',        'جاري الحفظ...'],
   ['lang.title',           'اختر لغتك'],
   ['lang.subtitle',        'يمكنك تغيير هذا لاحقًا في الإعدادات'],
   ['lang.section.all',     'جميع اللغات'],
   ['priv.title',           'قبل أن تستمر'],
   ['priv.subtitle',        'يرجى مراجعة سياسة الخصوصية وقبولها'],
   ['priv.header',          'سياسة الخصوصية'],
-  ['priv.point1.title',    'بياناتك تبقى على جهازك'],
-  ['priv.point1.body',     'لا يشغّل CLDrive أي خوادم. لا يتم إرسال ملفاتك وبيانات حسابك إلينا أبدًا.'],
-  ['priv.point2.title',    'اتصال سحابي مباشر'],
-  ['priv.point2.body',     'تنتقل الملفات مباشرة بين جهازك ومزود السحابة الذي تختاره — OneDrive أو Google Drive أو Dropbox.'],
-  ['priv.point3.title',    'لا تتبع، لا تحليلات'],
-  ['details.open',         'فتح'],
-  ['priv.point3.body',     'نحن لا نجمع التحليلات أو تقارير الأعطال أو معرفات الجهاز أو بيانات الموقع أو إحصاءات الاستخدام.'],
-  ['priv.point4.title',    'تخزين آمن للرموز'],
-  ['priv.point4.body',     'يتم تخزين رموز OAuth في HarmonyOS Asset Store، التخزين المشفر المدعوم بالعتاد في نظام التشغيل.'],
-  ['priv.point5.title',    'المزودون المتصلون فقط'],
-  ['priv.point5.body',     'تتم مشاركة البيانات فقط مع مزودي السحابة الذين تتصل بهم بشكل صريح. لا واجهات إعلانية، لا خدمات قياس.'],
-  ['priv.point6.title',    'أنت المتحكم'],
-  ['priv.point6.body',     'سجّل الخروج، امسح الملفات دون اتصال، امسح سجل المهام، أو ألغِ وصول التطبيق في أي وقت.'],
   ['priv.viewOnline',      'عرض السياسة الكاملة عبر الإنترنت'],
   ['priv.agreeCheck',      'لقد قرأت سياسة الخصوصية وأوافق عليها'],
   ['priv.decline',         'رفض'],
@@ -702,13 +715,21 @@ const AR: TranslationMap = new Map<string, string>([
   ['fb.searchPlaceholder', 'ابحث في ملفاتك'],
   ['fb.searching',         'جاري البحث...'],
   ['fb.folder',            'مجلد'],
+  ['fb.selected',          'محدد'],
+  ['fb.selectedN',         '{n} محدد'],
+  ['fb.selectAll',         'تحديد الكل'],
+  ['fb.deselectAll',       'إلغاء تحديد الكل'],
   ['fb.copy',              'نسخ'],
   ['fb.move',              'نقل'],
+  ['fb.moving',            'جاري النقل...'],
   ['fb.download',          'تنزيل'],
+  ['fb.downloading',       'جاري التنزيل...'],
   ['fb.delete',            'حذف'],
   ['fb.open',              'فتح'],
   ['fb.rename',            'إعادة التسمية'],
+  ['fb.renaming',          'جاري إعادة التسمية...'],
   ['fb.details',           'التفاصيل'],
+  ['fb.makeOffline',       'جعلها متاحة دون اتصال'],
   ['fb.newFolder',         'مجلد جديد'],
   ['fb.uploadFile',        'تحميل ملف'],
   ['fb.uploadFolder',      'تحميل مجلد'],
@@ -818,6 +839,20 @@ const AR: TranslationMap = new Map<string, string>([
   ['fb.uploadFailed',      'فشل التحميل'],
   ['fb.forceClearTitle',   'مسح كل شيء قسريًا؟'],
   ['fb.forceClearMsg',     'سيؤدي هذا إلى إزالة كل إدخال من قائمة المهام، بما في ذلك المهام التي لا تزال قيد التشغيل. سيستمر العمل في الخلفية لكنك لن ترى حالته بعد الآن. هل تريد المتابعة؟'],
+  ['fb.today',             'اليوم'],
+  ['fb.yesterday',         'أمس'],
+  ['fb.month.jan',         'يناير'],
+  ['fb.month.feb',         'فبراير'],
+  ['fb.month.mar',         'مارس'],
+  ['fb.month.apr',         'أبريل'],
+  ['fb.month.may',         'مايو'],
+  ['fb.month.jun',         'يونيو'],
+  ['fb.month.jul',         'يوليو'],
+  ['fb.month.aug',         'أغسطس'],
+  ['fb.month.sep',         'سبتمبر'],
+  ['fb.month.oct',         'أكتوبر'],
+  ['fb.month.nov',         'نوفمبر'],
+  ['fb.month.dec',         'ديسمبر'],
   ['details.title',        'التفاصيل'],
   ['details.loading',      'جاري التحميل...'],
   ['details.couldNotLoad', 'تعذر تحميل التفاصيل'],
@@ -868,27 +903,14 @@ const ES: TranslationMap = new Map<string, string>([
   ['common.cancel',        'Cancelar'],
   ['common.retry',         'Reintentar'],
   ['common.exit',          'Salir'],
-  ['priv.exit',          'Salir'],
   ['common.loading',       'Cargando...'],
+  ['common.saving',        'Guardando...'],
   ['lang.title',           'Elige tu idioma'],
   ['lang.subtitle',        'Puedes cambiarlo más tarde en Ajustes'],
   ['lang.section.all',     'Todos los idiomas'],
   ['priv.title',           'Antes de continuar'],
   ['priv.subtitle',        'Revisa y acepta nuestra Política de Privacidad'],
   ['priv.header',          'Política de Privacidad'],
-  ['details.open',         'Abrir'],
-  ['priv.point1.title',    'Tus datos permanecen en tu dispositivo'],
-  ['priv.point1.body',     'CLDrive no opera servidores. Tus archivos y datos de cuenta nunca se nos envían.'],
-  ['priv.point2.title',    'Conexión directa a la nube'],
-  ['priv.point2.body',     'Los archivos se mueven directamente entre tu dispositivo y el proveedor de nube que elijas — OneDrive, Google Drive o Dropbox.'],
-  ['priv.point3.title',    'Sin rastreo, sin análisis'],
-  ['priv.point3.body',     'No recopilamos análisis, informes de fallos, identificadores de dispositivo, datos de ubicación ni estadísticas de uso.'],
-  ['priv.point4.title',    'Almacenamiento seguro de tokens'],
-  ['priv.point4.body',     'Los tokens OAuth se guardan en HarmonyOS Asset Store, el almacenamiento cifrado respaldado por hardware del sistema operativo.'],
-  ['priv.point5.title',    'Solo proveedores conectados'],
-  ['priv.point5.body',     'Los datos se comparten solo con los proveedores de nube que conectas explícitamente. Sin SDK de publicidad, sin servicios de telemetría.'],
-  ['priv.point6.title',    'Tú tienes el control'],
-  ['priv.point6.body',     'Cierra sesión, borra archivos sin conexión, borra el historial de tareas o revoca el acceso a la aplicación en cualquier momento.'],
   ['priv.viewOnline',      'Ver la política completa en línea'],
   ['priv.agreeCheck',      'He leído y acepto la Política de Privacidad'],
   ['priv.decline',         'Rechazar'],
@@ -955,13 +977,21 @@ const ES: TranslationMap = new Map<string, string>([
   ['fb.searchPlaceholder', 'Busca en tus archivos'],
   ['fb.searching',         'Buscando...'],
   ['fb.folder',            'Carpeta'],
+  ['fb.selected',          'seleccionado'],
+  ['fb.selectedN',         '{n} seleccionados'],
+  ['fb.selectAll',         'Seleccionar todo'],
+  ['fb.deselectAll',       'Deseleccionar todo'],
   ['fb.copy',              'Copiar'],
   ['fb.move',              'Mover'],
+  ['fb.moving',            'Moviendo...'],
   ['fb.download',          'Descargar'],
+  ['fb.downloading',       'Descargando...'],
   ['fb.delete',            'Eliminar'],
   ['fb.open',              'Abrir'],
   ['fb.rename',            'Renombrar'],
+  ['fb.renaming',          'Renombrando...'],
   ['fb.details',           'Detalles'],
+  ['fb.makeOffline',       'Hacer disponible sin conexión'],
   ['fb.newFolder',         'Nueva carpeta'],
   ['fb.uploadFile',        'Subir archivo'],
   ['fb.uploadFolder',      'Subir carpeta'],
@@ -1071,6 +1101,20 @@ const ES: TranslationMap = new Map<string, string>([
   ['fb.uploadFailed',      'Error de carga'],
   ['fb.forceClearTitle',   '¿Forzar el borrado de todo?'],
   ['fb.forceClearMsg',     'Esto elimina todas las entradas de la lista de tareas, incluidas las que siguen en ejecución. El trabajo en segundo plano continuará pero ya no verás su estado. ¿Continuar?'],
+  ['fb.today',             'Hoy'],
+  ['fb.yesterday',         'Ayer'],
+  ['fb.month.jan',         'ene'],
+  ['fb.month.feb',         'feb'],
+  ['fb.month.mar',         'mar'],
+  ['fb.month.apr',         'abr'],
+  ['fb.month.may',         'may'],
+  ['fb.month.jun',         'jun'],
+  ['fb.month.jul',         'jul'],
+  ['fb.month.aug',         'ago'],
+  ['fb.month.sep',         'sep'],
+  ['fb.month.oct',         'oct'],
+  ['fb.month.nov',         'nov'],
+  ['fb.month.dec',         'dic'],
   ['details.title',        'Detalles'],
   ['details.loading',      'Cargando...'],
   ['details.couldNotLoad', 'No se pudieron cargar los detalles'],
@@ -1140,11 +1184,24 @@ export function getRuntimeLanguage(): LangCode {
   return currentLang;
 }
 
-/**
- * Resolve a key to a definite string. Falls back to English if the
- * key is missing in the active language, then to the key itself so
- * nothing renders as an empty string.
- */
+/** Exposed for diagnostic tooling — checks for missing keys. */
+export function getAllKeys(): string[] {
+  const keys: string[] = [];
+  EN.forEach((_v: string, k: string): void => { keys.push(k); });
+  return keys;
+}
+
+/** Exposed for diagnostic tooling — returns keys missing from a language. */
+export function findMissingKeys(code: LangCode): string[] {
+  const m: TranslationMap | undefined = REGISTRY.get(code);
+  if (m === undefined) return [];
+  const missing: string[] = [];
+  EN.forEach((_v: string, k: string): void => {
+    if (m.get(k) === undefined) missing.push(k);
+  });
+  return missing;
+}
+
 function resolveKey(key: string): string {
   const active: string | undefined = currentMap.get(key);
   if (active !== undefined) return active;
@@ -1153,11 +1210,6 @@ function resolveKey(key: string): string {
   return key;
 }
 
-/**
- * Translate a key. Positional substitution:
- *   t('fb.deletedN', '3')  →  "Deleted 3 items"
- * The first substitute replaces {name}, the second replaces {n}.
- */
 export function t(key: string, ...subs: string[]): string {
   let out: string = resolveKey(key);
   for (let i = 0; i < subs.length; i++) {
@@ -1167,10 +1219,6 @@ export function t(key: string, ...subs: string[]): string {
   return out;
 }
 
-/**
- * Translate with named substitution. Callers pass a Map of
- * placeholder → value, e.g. new Map([['name', 'photo.jpg']]).
- */
 export function tNamed(key: string, subs: Map<string, string>): string {
   let out: string = resolveKey(key);
   const keys: string[] = [];
@@ -1187,9 +1235,6 @@ export function tNamed(key: string, subs: Map<string, string>): string {
   return out;
 }
 
-/**
- * Detect the closest supported language from the system locale.
- */
 export function detectSystemLanguage(): LangCode {
   try {
     const sys: string = i18n.System.getSystemLanguage();

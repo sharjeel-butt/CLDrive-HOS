@@ -970,15 +970,16 @@ export class FileBrowserViewModel {
     ).getTime();
     const yesterdayStart: number = todayStart - 24 * 60 * 60 * 1000;
 
-    if (ms >= todayStart) return 'Today';
-    if (ms >= yesterdayStart) return 'Yesterday';
+    if (ms >= todayStart) return t('fb.today');
+    if (ms >= yesterdayStart) return t('fb.yesterday');
 
     const d = new Date(ms);
-    const months: string[] = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    const monthKeys: string[] = [
+      'fb.month.jan', 'fb.month.feb', 'fb.month.mar', 'fb.month.apr',
+      'fb.month.may', 'fb.month.jun', 'fb.month.jul', 'fb.month.aug',
+      'fb.month.sep', 'fb.month.oct', 'fb.month.nov', 'fb.month.dec'
     ];
-    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    return `${t(monthKeys[d.getMonth()])} ${d.getDate()}, ${d.getFullYear()}`;
   }
 
   // ===========================================================================

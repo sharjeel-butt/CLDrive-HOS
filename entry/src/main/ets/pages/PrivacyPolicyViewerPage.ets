@@ -11,13 +11,29 @@ const TAG: string = 'PrivacyPolicyViewerPage';
 const POLICY_BASE: string =
   'https://sharjeel-butt.github.io/CLDrive-HOS';
 
+/**
+ * Return the online privacy policy URL for a language.
+ *
+ * Languages with a translated policy page have their own path.
+ * Any language without one falls back to English so the WebView
+ * never lands on a 404.
+ *
+ * URL layout mirrors the GitHub Pages site built from `docs/`:
+ *   /                    → English landing (README)
+ *   /privacy/en/         → English policy
+ *   /privacy/ru/         → Russian policy
+ *   /privacy/zh-Hans/    → Simplified Chinese policy
+ *   /privacy/ar/         → Arabic policy
+ *   /privacy/es/         → Spanish policy
+ */
 function policyUrlFor(lang: string): string {
-  if (lang === 'en') return `${POLICY_BASE}/`;
+  if (lang === 'ru')      return `${POLICY_BASE}/privacy/ru/`;
   if (lang === 'zh-Hans') return `${POLICY_BASE}/privacy/zh-Hans/`;
-  if (lang === 'zh-Hant') return `${POLICY_BASE}/privacy/zh-Hant/`;
-  if (lang === 'ar') return `${POLICY_BASE}/privacy/ar/`;
-  if (lang === 'es') return `${POLICY_BASE}/privacy/es/`;
-  return `${POLICY_BASE}/`;
+  if (lang === 'ar')      return `${POLICY_BASE}/privacy/ar/`;
+  if (lang === 'es')      return `${POLICY_BASE}/privacy/es/`;
+  if (lang === 'en')      return `${POLICY_BASE}/privacy/en/`;
+  // Every other language falls back to English.
+  return `${POLICY_BASE}/privacy/en/`;
 }
 
 @Entry

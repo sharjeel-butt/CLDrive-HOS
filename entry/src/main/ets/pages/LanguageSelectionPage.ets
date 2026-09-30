@@ -2,7 +2,9 @@ import { router } from '@kit.ArkUI';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { LanguageManager } from '../core/i18n/LanguageManager';
-import { LanguageOption, LANGUAGES, LangCode } from '../core/i18n/Language';
+import {
+  LanguageOption, LANGUAGES, LangCode, availableLanguages
+} from '../core/i18n/Language';
 import { t, detectSystemLanguage } from '../core/i18n/I18n';
 import { PrivacyPrefs } from '../core/settings/PrivacyPrefs';
 import { AuthManager } from '../core/auth/AuthManager';
@@ -17,21 +19,35 @@ struct LanguageSelectionPage {
   @State private theme: ThemeColors = ThemeManager.get().colors();
   @State private selectedCode: LangCode = 'en';
   @State private isProcessing: boolean = false;
-  @State private translationVersion: number = 0;
+
+  @StorageLink('languageVersion') langVersion: number = 0;
 
   private onThemeChanged = (): void => {
     this.theme = ThemeManager.get().colors();
   };
 
   aboutToAppear(): void {
+    this.theme = ThemeManager.get().colors();
     ThemeManager.get().subscribe(this.onThemeChanged);
-    // Preselect based on system locale, but do not apply until the
-    // user taps Continue.
-    this.selectedCode = detectSystemLanguage();
+
+    // Preselect the system language if it's available; otherwise fall
+    // back to English so the picker always has a valid selection.
+    const detected: LangCode = detectSystemLanguage();
+    this.selectedCode = LanguageSelectionPage.isAvailable(detected)
+      ? detected
+      : 'en';
   }
 
   aboutToDisappear(): void {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
+  }
+
+  private static isAvailable(code: LangCode): boolean {
+    const list: LanguageOption[] = LANGUAGES;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].code === code && list[i].available) return true;
+    }
+    return false;
   }
 
   private async onContinue(): Promise<void> {
@@ -40,8 +56,6 @@ struct LanguageSelectionPage {
     try {
       await LanguageManager.set(this.selectedCode);
 
-      // Route to the next gate: privacy policy if not yet accepted,
-      // otherwise the existing auth check.
       const accepted: boolean = await PrivacyPrefs.isAccepted();
       let next: string = Routes.PRIVACY_POLICY;
       if (accepted) {
@@ -59,15 +73,10 @@ struct LanguageSelectionPage {
     }
   }
 
-  private async selectLanguage(option: LanguageOption): Promise<void> {
+  private selectLanguage(option: LanguageOption): void {
+    if (this.isProcessing) return;
     this.selectedCode = option.code;
-    // Preview the language immediately by applying it in-process.
-    // Persistence still happens on Continue.
     LanguageManager.set(option.code)
-      .then(() => {
-        // Re-render so labels update to the newly selected language.
-        this.translationVersion = this.translationVersion + 1;
-      })
       .catch((e: Error) => {
         Logger.error(TAG, `preview language failed: ${e.message}`);
       });
@@ -75,7 +84,6 @@ struct LanguageSelectionPage {
 
   build() {
     Column() {
-      // ---- Header ----
       Column({ space: 6 }) {
         Text(t('lang.title'))
           .fontSize(24)
@@ -93,9 +101,8 @@ struct LanguageSelectionPage {
       .alignItems(HorizontalAlign.Start)
       .padding({ left: 24, right: 24, top: 40, bottom: 20 })
 
-      // ---- Language list ----
       List({ space: 8 }) {
-        ForEach(LANGUAGES, (lang: LanguageOption) => {
+        ForEach(availableLanguages(), (lang: LanguageOption) => {
           ListItem() {
             Row({ space: 14 }) {
               Column({ space: 3 }) {
@@ -140,17 +147,20 @@ struct LanguageSelectionPage {
       .padding({ left: 16, right: 16 })
       .scrollBar(BarState.Off)
 
-      // ---- Continue button ----
-      Button(this.isProcessing ? t('priv.saving') : t('lang.continue'))
-        .width('100%')
-        .height(50)
-        .backgroundColor(this.theme.primary)
-        .fontColor(this.theme.primaryContrast)
-        .fontSize(16)
-        .fontWeight(FontWeight.Medium)
-        .enabled(!this.isProcessing)
-        .margin({ left: 20, right: 20, top: 12, bottom: 28 })
-        .onClick(() => { this.onContinue(); })
+      Row() {
+        Button(this.isProcessing ? t('common.saving') : t('common.continue'))
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .height(40)
+          .padding({ left: 32, right: 32 })
+          .backgroundColor(this.theme.primary)
+          .fontColor(this.theme.primaryContrast)
+          .enabled(!this.isProcessing)
+          .onClick(() => { this.onContinue(); })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .padding({ top: 12, bottom: 24 })
     }
     .width('100%')
     .height('100%')

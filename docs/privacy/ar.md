@@ -1,25 +1,25 @@
 ---
 layout: default
-title: سياسة الخصوصية — CLDrive
+title: سياسة الخصوصية — CLDrive Manager
 lang: ar
 permalink: /privacy/ar/
 ---
 
 <div dir="rtl" markdown="1">
 
-# سياسة الخصوصية لـ CLDrive
+# سياسة الخصوصية لـ CLDrive Manager
 
 **تاريخ السريان:** 29 سبتمبر 2026
 **آخر تحديث:** 29 سبتمبر 2026
-**ينطبق على:** CLDrive الإصدار 1.1.0 وما بعده
+**ينطبق على:** CLDrive Manager الإصدار 1.1.0 وما بعده
 
-تصف سياسة الخصوصية هذه كيفية تعامل CLDrive ("التطبيق"، "نحن"، "لنا")
+تصف سياسة الخصوصية هذه كيفية تعامل CLDrive Manager ("التطبيق"، "نحن"، "لنا")
 مع معلوماتك عند استخدامك تطبيقنا لنظام HarmonyOS.
 
-بتثبيت أو استخدام CLDrive، فإنك توافق على الممارسات الموضحة في هذه
+بتثبيت أو استخدام CLDrive Manager، فإنك توافق على الممارسات الموضحة في هذه
 السياسة.
 
-**🌐 اللغات:** [English](/privacy/en/) · [Русский](/privacy/ru/) · [简体中文](/privacy/zh-Hans/) · العربية · [Español](/privacy/es/)
+**🌐 اللغات:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/es/)
 
 [← العودة إلى README](/)
 
@@ -27,7 +27,7 @@ permalink: /privacy/ar/
 
 ## 1. ملخص
 
-CLDrive هو مدير ملفات سحابي لنظام HarmonyOS. يتصل بخدمات التخزين
+CLDrive Manager هو مدير ملفات سحابي لنظام HarmonyOS. يتصل بخدمات التخزين
 السحابي التابعة لجهات خارجية التي **تختارها أنت** — Microsoft OneDrive
 و Google Drive و Dropbox — ويتيح لك تصفح الملفات المخزنة في تلك
 الخدمات وتنظيمها ونقلها.
@@ -35,7 +35,7 @@ CLDrive هو مدير ملفات سحابي لنظام HarmonyOS. يتصل بخ�
 **نحن لا نُشغّل أي خوادم تخزّن ملفاتك. لا نجمع التحليلات. لا نبيع
 بياناتك. ليس لدينا حسابات خاصة بنا.**
 
-تندرج جميع البيانات التي يتعامل معها CLDrive في إحدى ثلاث فئات:
+تندرج جميع البيانات التي يتعامل معها CLDrive Manager في إحدى ثلاث فئات:
 
 | الفئة | مكان التخزين | من يمكنه رؤيتها |
 | :--- | :--- | :--- |
@@ -51,7 +51,7 @@ CLDrive هو مدير ملفات سحابي لنظام HarmonyOS. يتصل بخ�
 
 ### 2.1 بيانات وصفية ومحتوى الملفات السحابية
 
-عند تسجيل الدخول إلى حساب سحابي، يطلب CLDrive صلاحية القراءة والكتابة
+عند تسجيل الدخول إلى حساب سحابي، يطلب CLDrive Manager صلاحية القراءة والكتابة
 على ملفات ذلك الحساب. يتيح ذلك للتطبيق:
 
 - سرد محتويات المجلد (أسماء الملفات والأحجام والطوابع الزمنية)
@@ -61,7 +61,7 @@ CLDrive هو مدير ملفات سحابي لنظام HarmonyOS. يتصل بخ�
 - البحث داخل الحساب
 
 **تُنقل هذه البيانات مباشرة بين جهازك ومزود الخدمة السحابية.**
-لا يعترض CLDrive هذه البيانات ولا يسجّلها ولا يعيد توجيهها إلى أي خادم
+لا يعترض CLDrive Manager هذه البيانات ولا يسجّلها ولا يعيد توجيهها إلى أي خادم
 نتحكم فيه.
 
 ### 2.2 معلومات الحساب
@@ -79,7 +79,7 @@ CLDrive هو مدير ملفات سحابي لنظام HarmonyOS. يتصل بخ�
 ### 2.3 رموز المصادقة
 
 يصدر مزودو الخدمة السحابية رموز وصول قصيرة الأجل ورموز تحديث طويلة
-الأجل بعد تفويضك لـ CLDrive. تتيح هذه الرموز للتطبيق إجراء استدعاءات
+الأجل بعد تفويضك لـ CLDrive Manager. تتيح هذه الرموز للتطبيق إجراء استدعاءات
 API بالنيابة عنك دون إعادة السؤال.
 
 تُخزَّن الرموز باستخدام **HarmonyOS Asset Store** — التخزين الآمن
@@ -90,7 +90,7 @@ API بالنيابة عنك دون إعادة السؤال.
 
 ## 3. المعلومات التي لا نجمعها
 
-**لا** يجمع CLDrive أو ينقل أو يخزن أيًا مما يلي:
+**لا** يجمع CLDrive Manager أو ينقل أو يخزن أيًا مما يلي:
 
 - التحليلات أو إحصاءات الاستخدام
 - تقارير الأعطال
@@ -116,7 +116,7 @@ API بالنيابة عنك دون إعادة السؤال.
 
 ## 5. المشاركة والأطراف الثالثة
 
-يشارك CLDrive البيانات فقط مع مزودي السحابة الذين **تتصل بهم بشكل صريح**:
+يشارك CLDrive Manager البيانات فقط مع مزودي السحابة الذين **تتصل بهم بشكل صريح**:
 
 ### Microsoft OneDrive
 عند تسجيل الدخول إلى OneDrive، يتواصل جهازك مباشرة مع
@@ -135,7 +135,7 @@ Microsoft لبياناتك
 تخضع معالجة Dropbox لبياناتك
 [لسياسة خصوصية Dropbox](https://www.dropbox.com/privacy).
 
-**لا تتلقى أي أطراف ثالثة أي بيانات.** لا يتضمن CLDrive أي حزم SDK
+**لا تتلقى أي أطراف ثالثة أي بيانات.** لا يتضمن CLDrive Manager أي حزم SDK
 إعلانية أو مكتبات تحليلية أو خدمات قياس عن بعد.
 
 ---
@@ -166,7 +166,7 @@ Microsoft لبياناتك
 
 ### تسجيل الخروج من حساب
 افتح الشريط الجانبي → اضغط **تسجيل الخروج**. يؤدي هذا إلى مسح رموز
-مصادقة الحساب من Asset Store وإزالة الحساب من CLDrive. لا تُمس ملفاتك
+مصادقة الحساب من Asset Store وإزالة الحساب من CLDrive Manager. لا تُمس ملفاتك
 السحابية.
 
 ### إزالة الملفات دون اتصال
@@ -177,20 +177,20 @@ Microsoft لبياناتك
 **مسح قسري**.
 
 ### إلغاء وصول التطبيق
-يمكنك إلغاء وصول CLDrive إلى حسابك السحابي في أي وقت:
+يمكنك إلغاء وصول CLDrive Manager إلى حسابك السحابي في أي وقت:
 
 - **Microsoft:** [account.live.com/consent/Manage](https://account.live.com/consent/Manage)
 - **Google:** [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
 - **Dropbox:** [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps)
 
 ### إلغاء التثبيت
-يؤدي إلغاء تثبيت CLDrive إلى إزالة كل ملف محلي ورمز وتفضيل من جهازك.
+يؤدي إلغاء تثبيت CLDrive Manager إلى إزالة كل ملف محلي ورمز وتفضيل من جهازك.
 
 ---
 
 ## 8. الأمان
 
-يطبق CLDrive تدابير الأمان التالية:
+يطبق CLDrive Manager تدابير الأمان التالية:
 
 - **OAuth 2.0 مع PKCE (S256)** لـ OneDrive و Google Drive و Dropbox
 - **عدم تضمين أسرار العميل** لـ OneDrive و Dropbox
@@ -204,14 +204,14 @@ Microsoft لبياناتك
 
 ## 9. خصوصية الأطفال
 
-CLDrive غير موجّه للأطفال دون 13 عامًا. ولا نجمع معلومات شخصية من
+CLDrive Manager غير موجّه للأطفال دون 13 عامًا. ولا نجمع معلومات شخصية من
 الأطفال بشكل متعمد.
 
 ---
 
 ## 10. المستخدمون الدوليون
 
-يخزّن CLDrive جميع البيانات محليًا على جهازك. لا تُنقل أي بيانات إلى
+يخزّن CLDrive Manager جميع البيانات محليًا على جهازك. لا تُنقل أي بيانات إلى
 خوادم نشغّلها. عند استخدامك لمزود سحابة، تنطبق سياسة إقامة البيانات
 الخاصة بذلك المزود.
 
@@ -226,35 +226,35 @@ CLDrive غير موجّه للأطفال دون 13 عامًا. ولا نجمع �
 
 ## 12. المصادر المفتوحة
 
-CLDrive مفتوح المصدر:
+CLDrive Manager مفتوح المصدر:
 
-**[https://github.com/sharjeel-butt/CLDrive-HOS](https://github.com/sharjeel-butt/CLDrive-HOS)**
+**[https://github.com/sharjeel-butt/CLDrive Manager-HOS](https://github.com/sharjeel-butt/CLDrive Manager-HOS)**
 
 ---
 
 ## 13. الاتصال
 
-- **GitHub Issues:** [https://github.com/sharjeel-butt/CLDrive-HOS/issues](https://github.com/sharjeel-butt/CLDrive-HOS/issues)
+- **GitHub Issues:** [https://github.com/sharjeel-butt/CLDrive Manager-HOS/issues](https://github.com/sharjeel-butt/CLDrive Manager-HOS/issues)
 
 ---
 
 ## 14. بيانات الامتثال
 
 ### Microsoft Graph API
-يتوافق استخدام CLDrive لـ Microsoft Graph مع
+يتوافق استخدام CLDrive Manager لـ Microsoft Graph مع
 [شروط استخدام واجهات Microsoft API](https://learn.microsoft.com/en-us/legal/microsoft-apis/terms-of-use).
 
 الأذونات المطلوبة: `Files.ReadWrite`، `User.Read`، `offline_access`.
 
 ### Google Drive API
-يتوافق استخدام CLDrive لـ Google Drive مع
+يتوافق استخدام CLDrive Manager لـ Google Drive مع
 [سياسة بيانات مستخدمي خدمات Google API](https://developers.google.com/terms/api-services-user-data-policy).
 
 **النطاقات المطلوبة:** `https://www.googleapis.com/auth/drive.file`،
 `https://www.googleapis.com/auth/drive.metadata.readonly`.
 
 ### Dropbox API
-يتوافق استخدام CLDrive لـ Dropbox API مع
+يتوافق استخدام CLDrive Manager لـ Dropbox API مع
 [شروط وأحكام Dropbox API](https://www.dropbox.com/developers/reference/terms).
 
 **النطاقات المطلوبة:** `account_info.read`، `files.metadata.read`،
@@ -262,6 +262,6 @@ CLDrive مفتوح المصدر:
 
 ---
 
-*تنطبق هذه السياسة على CLDrive الإصدار 1.1.0 وما بعده.*
+*تنطبق هذه السياسة على CLDrive Manager الإصدار 1.1.0 وما بعده.*
 
 </div>

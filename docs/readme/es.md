@@ -1,15 +1,15 @@
 ---
 layout: default
-title: CLDrive — Español
+title: CLDrive Manager — Español
 lang: es
 permalink: /readme/es/
 ---
 
-# CLDrive
+# CLDrive Manager
 
 **Un gestor de archivos en la nube unificado para HarmonyOS.**
 
-CLDrive reúne OneDrive, Google Drive y Dropbox en un único navegador de
+CLDrive Manager reúne OneDrive, Google Drive y Dropbox en un único navegador de
 archivos coherente. Gestiona todas tus cuentas en la nube desde una sola
 aplicación nativa de HarmonyOS — con operaciones entre proveedores,
 autenticación segura PKCE y una arquitectura extensible que hace que
@@ -19,9 +19,9 @@ añadir un nuevo proveedor sea cuestión de escribir una clase.
 
 ---
 
-**🌐 Idiomas:** [English](/index.md) · [Русский](/readme/ru/) · [简体中文](/readme/zh-Hans/) · [العربية](/readme/ar/) · Español
+**🌐 Idiomas:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/readme/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
 
-**📄 [Política de Privacidad](/privacy/es/)** · [Código fuente](https://github.com/sharjeel-butt/CLDrive-HOS)
+**📄 [Política de Privacidad](/privacy/es/)** · [Código fuente](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/es/)
 
 ---
 
@@ -101,7 +101,7 @@ añadir un nuevo proveedor sea cuestión de escribir una clase.
 
 ## 🏗️ Arquitectura
 
-CLDrive se construye alrededor de una abstracción de proveedor. La capa
+CLDrive Manager se construye alrededor de una abstracción de proveedor. La capa
 de UI nunca toca una API específica de proveedor — habla con interfaces,
 y la fábrica proporciona la implementación correcta en tiempo de ejecución.
 
@@ -139,7 +139,7 @@ Cada proveedor vive en su propia carpeta con **Provider**, **AuthProvider**,
 
 ### Registra tus propias apps OAuth
 
-CLDrive es un cliente OAuth público y cada usuario registra su propia app
+CLDrive Manager es un cliente OAuth público y cada usuario registra su propia app
 en las tres consolas de proveedores. Esto mantiene a cada usuario en
 control total de sus propias credenciales.
 
@@ -166,8 +166,8 @@ control total de sus propias credenciales.
 ### Compilar
 
 ```bash
-git clone https://github.com/sharjeel-butt/CLDrive-HOS
-cd CLDrive-HOS
+git clone https://github.com/sharjeel-butt/CLDrive Manager-HOS
+cd CLDrive Manager-HOS
 # Abre en DevEco Studio, luego ejecuta en un dispositivo o emulador
 
 🗺️ Hoja de ruta
@@ -186,6 +186,6 @@ cd CLDrive-HOS
 📄 Licencia y privacidad
 Política de Privacidad — Español
 
-Código fuente — github.com/sharjeel-butt/CLDrive-HOS
+Código fuente — github.com/sharjeel-butt/CLDrive Manager-HOS
 
-Issues — github.com/sharjeel-butt/CLDrive-HOS/issues
+Issues — github.com/sharjeel-butt/CLDrive Manager-HOS/issues

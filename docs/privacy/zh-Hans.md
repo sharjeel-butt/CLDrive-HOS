@@ -1,22 +1,22 @@
 ---
 layout: default
-title: 隐私政策 — CLDrive
+title: 隐私政策 — CLDrive Manager
 lang: zh-Hans
 permalink: /privacy/zh-Hans/
 ---
 
-# CLDrive 隐私政策
+# CLDrive Manager 隐私政策
 
 **生效日期：** 2026 年 9 月 29 日
 **最后更新：** 2026 年 9 月 29 日
-**适用于：** CLDrive 1.1.0 及以上版本
+**适用于：** CLDrive Manager 1.1.0 及以上版本
 
-本隐私政策描述 CLDrive（"本应用"、"我们"）在您使用我们的 HarmonyOS
+本隐私政策描述 CLDrive Manager（"本应用"、"我们"）在您使用我们的 HarmonyOS
 应用时如何处理您的信息。
 
-安装或使用 CLDrive，即表示您同意本政策所述的各项做法。
+安装或使用 CLDrive Manager，即表示您同意本政策所述的各项做法。
 
-**🌐 语言：** [English](/privacy/en/) · [Русский](/privacy/ru/) · 简体中文 · [العربية](/privacy/ar/) · [Español](/privacy/es/)
+**🌐 语言：** [English](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/es/)
 
 [← 返回 README](/)
 
@@ -24,14 +24,14 @@ permalink: /privacy/zh-Hans/
 
 ## 1. 概要
 
-CLDrive 是一款 HarmonyOS 云文件管理器。它连接到**您**选择的第三方云存储
+CLDrive Manager 是一款 HarmonyOS 云文件管理器。它连接到**您**选择的第三方云存储
 服务——Microsoft OneDrive、Google Drive 和 Dropbox——让您浏览、整理和
 传输这些服务中存储的文件。
 
 **我们不运营任何存储您文件的服务器。我们不收集分析数据。我们不出售您的
 数据。我们没有自己的账户。**
 
-CLDrive 处理的所有数据属于以下三类之一：
+CLDrive Manager 处理的所有数据属于以下三类之一：
 
 | 类别 | 存储位置 | 谁能看到 |
 | :--- | :--- | :--- |
@@ -47,7 +47,7 @@ CLDrive 处理的所有数据属于以下三类之一：
 
 ### 2.1 云文件元数据和内容
 
-当您登录云账户时，CLDrive 请求对该账户文件的读写权限。这使本应用能够：
+当您登录云账户时，CLDrive Manager 请求对该账户文件的读写权限。这使本应用能够：
 
 - 列出文件夹内容（文件名、大小、时间戳）
 - 下载文件内容
@@ -55,7 +55,7 @@ CLDrive 处理的所有数据属于以下三类之一：
 - 重命名、移动、复制和删除文件
 - 在账户内搜索
 
-**这些数据直接在您的设备和云提供商之间传输。** CLDrive 从不拦截、
+**这些数据直接在您的设备和云提供商之间传输。** CLDrive Manager 从不拦截、
 记录或将其转发到我们控制的任何服务器。
 
 ### 2.2 账户信息
@@ -72,7 +72,7 @@ CLDrive 处理的所有数据属于以下三类之一：
 
 ### 2.3 身份验证令牌
 
-在您授权 CLDrive 后，云提供商签发短期访问令牌和长期刷新令牌。这些
+在您授权 CLDrive Manager 后，云提供商签发短期访问令牌和长期刷新令牌。这些
 令牌使本应用能够代表您进行 API 调用而无需重复提示您。
 
 令牌使用 **HarmonyOS Asset Store** 存储——操作系统由硬件支持的安全
@@ -82,7 +82,7 @@ CLDrive 处理的所有数据属于以下三类之一：
 
 ## 3. 我们不收集的信息
 
-CLDrive **不**收集、传输或存储以下任何内容：
+CLDrive Manager **不**收集、传输或存储以下任何内容：
 
 - 分析或使用统计
 - 崩溃报告
@@ -108,7 +108,7 @@ CLDrive **不**收集、传输或存储以下任何内容：
 
 ## 5. 共享和第三方
 
-CLDrive 仅与**您明确连接的**云提供商共享数据：
+CLDrive Manager 仅与**您明确连接的**云提供商共享数据：
 
 ### Microsoft OneDrive
 当您登录 OneDrive 时，您的设备使用 Microsoft Graph API 直接与
@@ -125,7 +125,7 @@ CLDrive 仅与**您明确连接的**云提供商共享数据：
 `api.dropboxapi.com` 和 `content.dropboxapi.com` 通信。Dropbox 对您
 数据的处理受 [Dropbox 隐私政策](https://www.dropbox.com/privacy)约束。
 
-**没有其他第三方收到任何数据。** CLDrive 不嵌入广告 SDK、分析库或
+**没有其他第三方收到任何数据。** CLDrive Manager 不嵌入广告 SDK、分析库或
 遥测服务。
 
 ---
@@ -146,7 +146,7 @@ CLDrive 仅与**您明确连接的**云提供商共享数据：
 ### 在云提供商处
 
 您的文件保留在您的 OneDrive、Google Drive 或 Dropbox 账户中，遵循
-各自的保留政策。通过 CLDrive 删除文件与通过其原生应用删除文件相同。
+各自的保留政策。通过 CLDrive Manager 删除文件与通过其原生应用删除文件相同。
 
 ---
 
@@ -156,7 +156,7 @@ CLDrive 仅与**您明确连接的**云提供商共享数据：
 
 ### 退出账户
 打开侧边栏 → 点击**退出登录**。这清除账户在 Asset Store 中的身份
-验证令牌并从 CLDrive 中移除该账户。您的云文件不受影响。
+验证令牌并从 CLDrive Manager 中移除该账户。您的云文件不受影响。
 
 ### 移除离线文件
 打开**设置 → 清除缓存**。这将删除所有本地缓存的文件并清除离线
@@ -166,23 +166,23 @@ CLDrive 仅与**您明确连接的**云提供商共享数据：
 打开**任务** → 使用**清除已完成**、**全部清除**或**强制清除**。
 
 ### 撤销应用访问
-您可以随时撤销 CLDrive 对您云账户的访问：
+您可以随时撤销 CLDrive Manager 对您云账户的访问：
 
 - **Microsoft：** [account.live.com/consent/Manage](https://account.live.com/consent/Manage)
 - **Google：** [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
 - **Dropbox：** [dropbox.com/account/connected_apps](https://www.dropbox.com/account/connected_apps)
 
-撤销后，即使 CLDrive 仍持有令牌，也将无法访问您的文件。
+撤销后，即使 CLDrive Manager 仍持有令牌，也将无法访问您的文件。
 
 ### 卸载
-卸载 CLDrive 会从您的设备中删除所有本地文件、令牌和首选项。卸载后
+卸载 CLDrive Manager 会从您的设备中删除所有本地文件、令牌和首选项。卸载后
 不会保留任何内容。
 
 ---
 
 ## 8. 安全性
 
-CLDrive 实施以下安全措施：
+CLDrive Manager 实施以下安全措施：
 
 - 对 OneDrive、Google Drive 和 Dropbox 使用 **OAuth 2.0 与 PKCE（S256）**
 - OneDrive 和 Dropbox **未嵌入客户端密钥**
@@ -198,14 +198,14 @@ CLDrive 实施以下安全措施：
 
 ## 9. 儿童隐私
 
-CLDrive 不面向 13 岁以下的儿童。我们不会在知情的情况下收集儿童的
+CLDrive Manager 不面向 13 岁以下的儿童。我们不会在知情的情况下收集儿童的
 个人信息。
 
 ---
 
 ## 10. 国际用户
 
-CLDrive 将所有数据存储在您的设备本地。没有任何数据传输到我们运营的
+CLDrive Manager 将所有数据存储在您的设备本地。没有任何数据传输到我们运营的
 服务器。当您使用云提供商时，该提供商的数据驻留政策适用。
 
 ---
@@ -218,28 +218,28 @@ CLDrive 将所有数据存储在您的设备本地。没有任何数据传输到
 
 ## 12. 开源
 
-CLDrive 是开源的：
+CLDrive Manager 是开源的：
 
-**[https://github.com/sharjeel-butt/CLDrive-HOS](https://github.com/sharjeel-butt/CLDrive-HOS)**
+**[https://github.com/sharjeel-butt/CLDrive Manager-HOS](https://github.com/sharjeel-butt/CLDrive Manager-HOS)**
 
 ---
 
 ## 13. 联系方式
 
-- **GitHub Issues：** [https://github.com/sharjeel-butt/CLDrive-HOS/issues](https://github.com/sharjeel-butt/CLDrive-HOS/issues)
+- **GitHub Issues：** [https://github.com/sharjeel-butt/CLDrive Manager-HOS/issues](https://github.com/sharjeel-butt/CLDrive Manager-HOS/issues)
 
 ---
 
 ## 14. 合规声明
 
 ### Microsoft Graph API
-CLDrive 对 Microsoft Graph 的使用符合
+CLDrive Manager 对 Microsoft Graph 的使用符合
 [Microsoft API 使用条款](https://learn.microsoft.com/en-us/legal/microsoft-apis/terms-of-use)。
 
 请求的权限：`Files.ReadWrite`、`User.Read`、`offline_access`。
 
 ### Google Drive API
-CLDrive 对 Google Drive 的使用符合
+CLDrive Manager 对 Google Drive 的使用符合
 [Google API 服务用户数据政策](https://developers.google.com/terms/api-services-user-data-policy)，
 包括有限使用要求。
 
@@ -247,11 +247,11 @@ CLDrive 对 Google Drive 的使用符合
 
 | 范围 | 用途 |
 | :--- | :--- |
-| `https://www.googleapis.com/auth/drive.file` | 创建、编辑和删除用户通过 CLDrive 打开或创建的文件和文件夹 |
+| `https://www.googleapis.com/auth/drive.file` | 创建、编辑和删除用户通过 CLDrive Manager 打开或创建的文件和文件夹 |
 | `https://www.googleapis.com/auth/drive.metadata.readonly` | 读取文件和文件夹元数据以显示文件浏览器 |
 
 ### Dropbox API
-CLDrive 对 Dropbox API 的使用符合
+CLDrive Manager 对 Dropbox API 的使用符合
 [Dropbox API 条款和条件](https://www.dropbox.com/developers/reference/terms)。
 
 **请求的范围：** `account_info.read`、`files.metadata.read`、
@@ -259,4 +259,4 @@ CLDrive 对 Dropbox API 的使用符合
 
 ---
 
-*本政策适用于 CLDrive 1.1.0 及以上版本。*
+*本政策适用于 CLDrive Manager 1.1.0 及以上版本。*

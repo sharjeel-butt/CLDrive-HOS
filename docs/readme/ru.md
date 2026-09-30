@@ -1,15 +1,15 @@
 ---
 layout: default
-title: CLDrive — Русский
+title: CLDrive Manager — Русский
 lang: ru
 permalink: /readme/ru/
 ---
 
-# CLDrive
+# CLDrive Manager
 
 **Единый файловый менеджер облачных хранилищ для HarmonyOS.**
 
-CLDrive объединяет OneDrive, Google Drive и Dropbox в один
+CLDrive Manager объединяет OneDrive, Google Drive и Dropbox в один
 согласованный файловый браузер. Управляйте всеми своими облачными
 аккаунтами из одного нативного приложения HarmonyOS — с
 кросс-провайдерными операциями, безопасной аутентификацией PKCE и
@@ -20,9 +20,9 @@ CLDrive объединяет OneDrive, Google Drive и Dropbox в один
 
 ---
 
-**🌐 Языки:** [English](/index.md) · Русский · [简体中文](/readme/zh-Hans/) · [العربية](/readme/ar/) · [Español](/readme/es/)
+**🌐 Языки:**[English](https://sharjeel-butt.github.io/CLDrive-HOS/readme/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
 
-**📄 [Политика конфиденциальности](/privacy/ru/)** · [Исходный код](https://github.com/sharjeel-butt/CLDrive-HOS)
+**📄 [Политика конфиденциальности](/privacy/ru/)** · [Исходный код](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/ru/)
 
 ---
 
@@ -102,7 +102,7 @@ CLDrive объединяет OneDrive, Google Drive и Dropbox в один
 
 ## 🏗️ Архитектура
 
-CLDrive построен вокруг абстракции провайдера. Слой UI никогда не
+CLDrive Manager построен вокруг абстракции провайдера. Слой UI никогда не
 обращается к специфичным для провайдера API — он работает с интерфейсами,
 а фабрика предоставляет нужную реализацию во время выполнения.
 
@@ -140,7 +140,7 @@ CLDrive построен вокруг абстракции провайдера.
 
 ### Зарегистрируйте свои OAuth-приложения
 
-CLDrive — публичный OAuth-клиент, и каждый пользователь регистрирует
+CLDrive Manager — публичный OAuth-клиент, и каждый пользователь регистрирует
 своё приложение в трёх консолях провайдеров. Это оставляет каждого
 пользователя в полном контроле над своими учётными данными.
 
@@ -167,8 +167,8 @@ CLDrive — публичный OAuth-клиент, и каждый пользо�
 ### Сборка
 
 ```bash
-git clone https://github.com/sharjeel-butt/CLDrive-HOS
-cd CLDrive-HOS
+git clone https://github.com/sharjeel-butt/CLDrive Manager-HOS
+cd CLDrive Manager-HOS
 # Откройте в DevEco Studio и запустите на устройстве или эмуляторе
 
 🗺️ План развития
@@ -187,6 +187,6 @@ cd CLDrive-HOS
 📄 Лицензия и конфиденциальность
 Политика конфиденциальности — Русский
 
-Исходный код — github.com/sharjeel-butt/CLDrive-HOS
+Исходный код — github.com/sharjeel-butt/CLDrive Manager-HOS
 
-Issues — github.com/sharjeel-butt/CLDrive-HOS/issues
+Issues — github.com/sharjeel-butt/CLDrive Manager-HOS/issues

@@ -4,7 +4,7 @@ import { ThemeMode } from '../core/theme/ThemeMode';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { UiPrefs } from '../core/settings/UiPrefs';
 import { LanguageManager } from '../core/i18n/LanguageManager';
-import { LanguageOption, LANGUAGES, LangCode, languageByCode } from '../core/i18n/Language';
+import { LanguageOption, LANGUAGES, LangCode, languageByCode, availableLanguages } from '../core/i18n/Language';
 import { t } from '../core/i18n/I18n';
 import { OfflineStore, CacheInfo } from '../core/services/OfflineStore';
 import { Logger } from '../utils/Logger';
@@ -517,8 +517,8 @@ struct SettingsPage {
       Divider().color(this.theme.divider)
 
       List({ space: 1 }) {
-        ForEach(LANGUAGES, (lang: LanguageOption) => {
-          ListItem() {
+        ForEach(availableLanguages(), (lang: LanguageOption) => {
+           ListItem() {
             Row({ space: 14 }) {
               Column({ space: 3 }) {
                 Text(lang.englishName)

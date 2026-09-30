@@ -15,6 +15,7 @@ import { CloudItemType } from '../core/models/CloudItemType';
 import { AccountInfo } from '../core/models/AccountInfo';
 import { AuthManager } from '../core/auth/AuthManager';
 import { DownloadInfo } from '../core/models/DownloadInfo';
+import { OfflineOpener, OfflineOpenResult, OpenOutcome } from '../core/services/OfflineOpener';
 import {
   Operation, OperationType, OperationStatus, OperationItemKind,
   RetryPayload, canRetry
@@ -1460,17 +1461,20 @@ export class FileBrowserViewModel {
     if (this.context === null) return;
     const ctx: common.UIAbilityContext = this.context;
 
-    const record: OfflineFileRecord | null =
-      await OfflineStore.getById(item.id);
-    if (record === null) {
+    const outcome: OpenOutcome = await OfflineOpener.open(ctx, item.id);
+
+    if (outcome.result === OfflineOpenResult.OK) {
+      return;
+    }
+
+    if (outcome.result === OfflineOpenResult.MISSING) {
       promptAction.showToast({ message: t('fb.offlineMissing') });
       return;
     }
 
-    try {
-      fs.accessSync(record.localPath);
-    } catch (_) {
-      await OfflineStore.remove(item.id);
+    if (outcome.result === OfflineOpenResult.GONE) {
+      // The file vanished — drop it from the local list so the row
+      // stops showing the cloud badge.
       const idx: number = this.offlineIds.indexOf(item.id);
       if (idx >= 0) {
         const next: string[] = this.offlineIds.slice();
@@ -1481,25 +1485,11 @@ export class FileBrowserViewModel {
       return;
     }
 
-    const mime: string = record.mimeType.length > 0
-      ? record.mimeType
-      : 'application/octet-stream';
-
-    try {
-      const want: Want = {
-        action: 'ohos.want.action.viewData',
-        uri: `file://${record.localPath}`,
-        type: mime,
-        flags: wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION
-      };
-      await ctx.startAbility(want);
-    } catch (e) {
-      const readable: string = formatError(e as Error);
-      Logger.error(TAG, `startAbility failed: ${readable}`);
-      promptAction.showToast({
-        message: `${t('fb.cannotOpen')}: ${readable}`
-      });
-    }
+    // FAILED
+    const msg: string = outcome.message !== undefined ? outcome.message : '';
+    promptAction.showToast({
+      message: `${t('fb.cannotOpen')}: ${msg}`
+    });
   }
 
   // ===========================================================================

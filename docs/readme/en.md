@@ -19,9 +19,9 @@ one class.
 
 ---
 
-**🌐 Languages:** [English](/CLDrive-HOS/) · [Русский](readme/ru/) · [简体中文](readme/zh-Hans/) · [العربية](readme/ar/) · [Español](readme/es/)
+**🌐 Languages:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/readme/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
 
-**📄 [Privacy Policy](privacy/en/)** · [Source code](https://github.com/sharjeel-butt/CLDrive-HOS/privacy/en/)
+**📄 [Privacy Policy](privacy/en/)** · [Source code](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/en/) 
 
 ---
 

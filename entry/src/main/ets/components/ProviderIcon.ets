@@ -15,6 +15,15 @@ export function styleForProvider(type: CloudProviderType): ProviderStyle {
   if (type === CloudProviderType.DROPBOX) {
     return { glyph: '◆', color: '#0061FF' };
   }
+  if (type === CloudProviderType.WEBDAV) {
+    return { glyph: '⇄', color: '#4A7C59' };
+  }
+  if (type === CloudProviderType.S3) {
+    return { glyph: '▦', color: '#FF9900' };
+  }
+  if (type === CloudProviderType.BOX) {
+    return { glyph: '□', color: '#0061D5' };
+  }
   return { glyph: '☁', color: '#666666' };
 }
 
@@ -33,6 +42,7 @@ export struct ProviderIcon {
     } else if (this.provider === CloudProviderType.DROPBOX) {
       this.buildBrandIcon($r('app.media.provider_dropbox'))
     } else {
+      // WebDAV, S3, Box, and any future unknown provider.
       this.buildGlyphBadge()
     }
   }

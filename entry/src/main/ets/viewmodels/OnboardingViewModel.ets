@@ -36,6 +36,12 @@ export interface ProviderOption {
   label: string;
   subtitle: string;
   enabled: boolean;
+  /**
+   * True for providers that are announced but not yet implemented.
+   * The picker renders them faded with a "Coming soon" chip and
+   * does not fire onSelectProvider.
+   */
+  comingSoon: boolean;
 }
 
 export class OnboardingViewModel {
@@ -169,9 +175,11 @@ export class OnboardingViewModel {
     if (type === CloudProviderType.ONEDRIVE) return t('onb.provider.onedrive');
     if (type === CloudProviderType.GOOGLE_DRIVE) return t('onb.provider.google');
     if (type === CloudProviderType.DROPBOX) return t('onb.provider.dropbox');
+    if (type === CloudProviderType.WEBDAV) return t('onb.provider.webdav');
+    if (type === CloudProviderType.S3) return t('onb.provider.s3');
+    if (type === CloudProviderType.BOX) return t('onb.provider.box');
     return t('onb.provider');
   }
-
   // ---------------------------------------------------------------------------
   // Provider list — rebuilt on each read so language changes take effect
   // ---------------------------------------------------------------------------
@@ -182,19 +190,45 @@ export class OnboardingViewModel {
         type: CloudProviderType.ONEDRIVE,
         label: t('onb.provider.onedrive'),
         subtitle: t('onb.subtitle.onedrive'),
-        enabled: true
+        enabled: true,
+        comingSoon: false
       },
       {
         type: CloudProviderType.GOOGLE_DRIVE,
         label: t('onb.provider.google'),
         subtitle: t('onb.subtitle.google'),
-        enabled: true
+        enabled: true,
+        comingSoon: false
       },
       {
         type: CloudProviderType.DROPBOX,
         label: t('onb.provider.dropbox'),
         subtitle: t('onb.subtitle.dropbox'),
-        enabled: true
+        enabled: true,
+        comingSoon: false
+      },
+
+      // ---- Coming soon ----
+      {
+        type: CloudProviderType.WEBDAV,
+        label: t('onb.provider.webdav'),
+        subtitle: t('onb.comingSoon'),
+        enabled: false,
+        comingSoon: true
+      },
+      {
+        type: CloudProviderType.S3,
+        label: t('onb.provider.s3'),
+        subtitle: t('onb.comingSoon'),
+        enabled: false,
+        comingSoon: true
+      },
+      {
+        type: CloudProviderType.BOX,
+        label: t('onb.provider.box'),
+        subtitle: t('onb.comingSoon'),
+        enabled: false,
+        comingSoon: true
       }
     ];
   }

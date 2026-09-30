@@ -18,7 +18,7 @@ CLDrive Manager 将 OneDrive、Google Drive 和 Dropbox 整合到一个一致的
 
 ---
 
-**🌐 语言：** [English](https://sharjeel-butt.github.io/CLDrive-HOS/readme/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
+**🌐 语言：** [English](https://sharjeel-butt.github.io/CLDrive-HOS/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · [简体中文]· [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
 
 **📄 [隐私政策](/privacy/zh-Hans/)** · [源代码](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/zh-Hans/)
 

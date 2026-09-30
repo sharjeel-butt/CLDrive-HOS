@@ -20,7 +20,7 @@ permalink: /readme/ar/
 
 ---
 
-**🌐 اللغات:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/readme/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
+**🌐 اللغات:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · [简体中文] · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
 
 **📄 [سياسة الخصوصية](/privacy/ar/)** · [الكود المصدري](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/ar/)
 

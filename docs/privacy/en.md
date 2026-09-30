@@ -9,7 +9,7 @@ permalink: /privacy/en/
 
 **Effective date:** September 29, 2026
 **Last updated:** September 29, 2026
-**Applies to:** CLDrive Manager version 1.1.0 and later
+**Applies to:** CLDrive Manager version 1.3.0 and later
 
 This Privacy Policy describes how CLDrive Manager ("the App", "we", "us", "our")
 handles your information when you use our HarmonyOS application.

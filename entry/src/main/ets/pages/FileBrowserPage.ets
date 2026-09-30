@@ -22,6 +22,7 @@ import { ProviderIcon } from '../components/ProviderIcon';
 import { FileIcon } from '../components/FileIcon';
 import { Routes } from '../utils/RouteConstants';
 import { t, tNamed } from '../core/i18n/I18n';
+import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
 
 const RETRY_ENABLED: boolean = true;
 
@@ -370,7 +371,8 @@ struct FileBrowserPage {
     }
     .width('100%').alignItems(HorizontalAlign.Start)
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-    .backgroundColor(this.theme.surface)
+    .backgroundColor(this.theme.background)
+    .border({ width: { bottom: 1 }, color: this.theme.divider })
   }
 
   @Builder
@@ -450,7 +452,8 @@ struct FileBrowserPage {
     .width('100%')
     .padding({ left: 8, right: 12, top: 12, bottom: 12 })
     .alignItems(VerticalAlign.Center)
-    .backgroundColor(this.theme.surface)
+    .backgroundColor(this.theme.background)
+    .border({ width: { bottom: 1 }, color: this.theme.divider })
   }
 
   @Builder
@@ -471,8 +474,8 @@ struct FileBrowserPage {
     }
     .width('100%')
     .padding({ top: 10, bottom: 16 })
-    .backgroundColor(this.theme.surface)
-    .shadow({ radius: 12, color: '#22000000', offsetX: 0, offsetY: -2 })
+    .backgroundColor(this.theme.background)
+    .border({ width: { top: 1 }, color: this.theme.divider })
   }
 
   @Builder
@@ -823,10 +826,15 @@ struct FileBrowserPage {
       }
 
       if (!this.vm.isSelectionMode) {
-        Text('⋮')
-          .fontSize(22).fontColor(this.theme.textSecondary)
-          .width(40).height(40).textAlign(TextAlign.Center)
-          .onClick(() => { this.vm.onShowItemActions(item); })
+        if (item.type === CloudItemType.FILE && this.vm.isDownloading(item.id)) {
+          LoadingProgress().width(22).height(22).color(this.theme.primary)
+            .margin({ left: 8, right: 12 })
+        } else {
+          Text('⋮')
+            .fontSize(22).fontColor(this.theme.textSecondary)
+            .width(40).height(40).textAlign(TextAlign.Center)
+            .onClick(() => { this.vm.onShowItemActions(item); })
+        }
       }
     }
     .width('100%')
@@ -844,8 +852,8 @@ struct FileBrowserPage {
         this.vm.toggleSelection(item.id);
       } else if (item.type === CloudItemType.FOLDER) {
         this.vm.openFolder(item);
-      } else if (this.vm.isOffline(item.id)) {
-        this.vm.openOfflineFile(item);
+      } else {
+        this.vm.openFile(item);
       }
     })
     .gesture(
@@ -874,7 +882,7 @@ struct FileBrowserPage {
 
       Column() {
         if (this.vm.selectedItem !== null
-          && this.vm.isOffline(this.vm.selectedItem.id)) {
+          && this.vm.selectedItem.type === CloudItemType.FILE) {
           this.buildOpenRow()
         }
         this.buildDownloadRow()
@@ -956,7 +964,7 @@ struct FileBrowserPage {
       if (this.vm.selectedItem !== null) {
         const item = this.vm.selectedItem;
         this.vm.closeActionsSheet();
-        this.vm.openOfflineFile(item);
+        this.vm.openFile(item);
       }
     })
   }
@@ -1772,7 +1780,8 @@ struct FileBrowserPage {
   }
 
   private appDisplayName(): string {
-    return 'CLDrive';
+    const info: AppVersionInfo = getAppVersionInfo();
+    return info.appName.length > 0 ? info.appName : info.bundleName;
   }
 
   @Builder

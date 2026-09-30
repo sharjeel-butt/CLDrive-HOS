@@ -15,7 +15,6 @@ import { CloudItemType } from '../core/models/CloudItemType';
 import { AccountInfo } from '../core/models/AccountInfo';
 import { AuthManager } from '../core/auth/AuthManager';
 import { DownloadInfo } from '../core/models/DownloadInfo';
-import { OfflineOpener, OfflineOpenResult, OpenOutcome } from '../core/services/OfflineOpener';
 import {
   Operation, OperationType, OperationStatus, OperationItemKind,
   RetryPayload, canRetry
@@ -28,6 +27,8 @@ import { formatError } from '../utils/ErrorFormatter';
 import { Logger } from '../utils/Logger';
 import { Routes } from '../utils/RouteConstants';
 import { t, tNamed } from '../core/i18n/I18n';
+import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
+import { FilePreviewer } from '../core/services/FilePreviewer';
 
 const TAG: string = 'FileBrowserViewModel';
 
@@ -1458,39 +1459,51 @@ export class FileBrowserViewModel {
     });
   }
 
-  async openOfflineFile(item: CloudItem): Promise<void> {
-    if (this.context === null) return;
+  /**
+   * Open a cloud file in the system default viewer.
+   *
+   * If the item is available offline, opens the cached copy directly.
+   * Otherwise downloads it to the preview cache and opens that. The
+   * row shows a spinner via `markDownloading` only when a network
+   * fetch is needed, so offline opens feel instant.
+   */
+  async openFile(item: CloudItem): Promise<void> {
+    if (item.type !== CloudItemType.FILE) return;
+    if (this.context === null || this.cloudProvider === null) return;
+    if (this.isDownloading(item.id)) return;
+
     const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
+    const wasOffline: boolean = this.isOffline(item.id);
 
-    const outcome: OpenOutcome = await OfflineOpener.open(ctx, item.id);
-
-    if (outcome.result === OfflineOpenResult.OK) {
-      return;
+    if (!wasOffline) {
+      this.markDownloading(item.id, true);
     }
 
-    if (outcome.result === OfflineOpenResult.MISSING) {
-      promptAction.showToast({ message: t('fb.offlineMissing') });
-      return;
-    }
+    try {
+      await FilePreviewer.open(ctx, item, provider);
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `openFile failed for ${item.name}: ${readable}`);
+      promptAction.showToast({
+        message: `${t('fb.cannotOpen')}: ${readable}`
+      });
 
-    if (outcome.result === OfflineOpenResult.GONE) {
-      // The file vanished — drop it from the local list so the row
-      // stops showing the cloud badge.
-      const idx: number = this.offlineIds.indexOf(item.id);
-      if (idx >= 0) {
-        const next: string[] = this.offlineIds.slice();
-        next.splice(idx, 1);
-        this.offlineIds = next;
+      // If this was an offline open that failed, the cached file may
+      // have been deleted externally — drop it from the badge list.
+      if (wasOffline) {
+        const idx: number = this.offlineIds.indexOf(item.id);
+        if (idx >= 0) {
+          const next: string[] = this.offlineIds.slice();
+          next.splice(idx, 1);
+          this.offlineIds = next;
+        }
       }
-      promptAction.showToast({ message: t('fb.offlineGone') });
-      return;
+    } finally {
+      if (!wasOffline) {
+        this.markDownloading(item.id, false);
+      }
     }
-
-    // FAILED
-    const msg: string = outcome.message !== undefined ? outcome.message : '';
-    promptAction.showToast({
-      message: `${t('fb.cannotOpen')}: ${msg}`
-    });
   }
 
   // ===========================================================================
@@ -2604,7 +2617,11 @@ export class FileBrowserViewModel {
       return;
     }
 
-    const zipName: string = `CLDrive_${Date.now()}.zip`;
+    const info: AppVersionInfo = getAppVersionInfo();
+    const brand: string = info.appName.length > 0 && info.appName !== '—'
+      ? info.appName.replace(/[^a-zA-Z0-9_-]/g, '_')
+      : 'CLDrive';
+    const zipName: string = `${brand}_${Date.now()}.zip`;
     const destUri: string | null = await this.pickSaveLocation(zipName);
     if (destUri === null) return;
 

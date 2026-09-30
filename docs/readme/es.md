@@ -19,7 +19,7 @@ añadir un nuevo proveedor sea cuestión de escribir una clase.
 
 ---
 
-**🌐 Idiomas:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/readme/en/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · 简体中文 · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
+**🌐 Idiomas:** [English](https://sharjeel-butt.github.io/CLDrive-HOS/) · [Русский](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ru/) · [简体中文] · [العربية](https://sharjeel-butt.github.io/CLDrive-HOS/readme/ar/) · [Español](https://sharjeel-butt.github.io/CLDrive-HOS/readme/es/)
 
 **📄 [Política de Privacidad](/privacy/es/)** · [Código fuente](https://sharjeel-butt.github.io/CLDrive-HOS/privacy/es/)
 

@@ -5,7 +5,6 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { fileUri } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
-import { Want, wantConstant } from '@kit.AbilityKit';
 import { CloudProviderFactory } from '../core/providers/CloudProviderFactory';
 import { CloudProviderType } from '../core/models/CloudProviderType';
 import { ICloudProvider } from '../core/interfaces/ICloudProvider';
@@ -19,9 +18,7 @@ import {
 } from '../core/models/Operation';
 import { OperationTracker } from '../core/services/OperationTracker';
 import { OfflineStore, OfflineFileRecord } from '../core/services/OfflineStore';
-import {
-  OfflineOpener, OfflineOpenResult, OpenOutcome
-} from '../core/services/OfflineOpener';
+import { FilePreviewer } from '../core/services/FilePreviewer';
 import { ThemeManager } from '../core/theme/ThemeManager';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { t, tNamed } from '../core/i18n/I18n';
@@ -65,8 +62,9 @@ struct ItemDetailsPage {
   @State private renameText: string = '';
   @State private isProcessing: boolean = false;
 
-  // ---- Download ----
+  // ---- Download / Open ----
   @State private isDownloading: boolean = false;
+  @State private isOpening: boolean = false;
 
   // ---- Move picker ----
   @State private showMovePicker: boolean = false;
@@ -155,7 +153,8 @@ struct ItemDetailsPage {
     }
     .width('100%')
     .padding({ left: 8, right: 8, top: 12, bottom: 12 })
-    .backgroundColor(this.theme.surface)
+    .backgroundColor(this.theme.background)
+    .border({ width: { bottom: 1 }, color: this.theme.divider })
   }
 
   @Builder
@@ -209,14 +208,14 @@ struct ItemDetailsPage {
           Column()
             .width(120)
             .height(88)
-            .backgroundColor('#F59E0B')
+            .backgroundColor(this.theme.warning)
             .borderRadius(10)
             .margin({ top: 18, left: 10 })
 
           Column()
             .width(56)
             .height(18)
-            .backgroundColor('#D97706')
+            .backgroundColor(this.theme.warningSoft)
             .borderRadius({
               topLeft: 10,
               topRight: 6,
@@ -229,7 +228,7 @@ struct ItemDetailsPage {
             Text(`${this.item.childCount}`)
               .fontSize(30)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#78350F')
+              .fontColor(this.theme.background)
               .margin({ top: 62, left: 26 })
           }
         }
@@ -238,22 +237,34 @@ struct ItemDetailsPage {
       }
 
       if (this.item !== null && this.item.type === CloudItemType.FILE) {
-        FileIcon({
-          fileName: this.item.name,
-          mimeType: this.item.mimeType !== undefined ? this.item.mimeType : '',
-          badgeSize: 120
-        })
+        Stack({ alignContent: Alignment.Center }) {
+          FileIcon({
+            fileName: this.item.name,
+            mimeType: this.item.mimeType !== undefined ? this.item.mimeType : '',
+            badgeSize: 120
+          })
+
+          if (this.isOpening) {
+            Column()
+              .width(120).height(120)
+              .borderRadius(26)
+              .backgroundColor(this.theme.overlay)
+              .justifyContent(FlexAlign.Center)
+              .alignItems(HorizontalAlign.Center)
+            LoadingProgress().width(36).height(36).color('#FFFFFF')
+              .position({ x: 42, y: 42 })
+          }
+        }
+        .width(120)
+        .height(120)
       }
     }
     .width('100%')
     .alignItems(HorizontalAlign.Center)
     .margin({ top: 16, bottom: 28 })
     .onClick(() => {
-      // Tap the icon to open the file when it's available offline.
-      if (this.isOffline
-        && this.item !== null
-        && this.item.type === CloudItemType.FILE) {
-        this.openOfflineFile();
+      if (this.item !== null && this.item.type === CloudItemType.FILE) {
+        this.onOpen();
       }
     })
   }
@@ -261,9 +272,7 @@ struct ItemDetailsPage {
   @Builder
   buildActionButtons() {
     Row() {
-      if (this.isOffline
-        && this.item !== null
-        && this.item.type === CloudItemType.FILE) {
+      if (this.item !== null && this.item.type === CloudItemType.FILE) {
         this.buildActionButton('📂', t('details.open'), ACTION_OPEN, true)
       }
       this.buildActionButton('🗑', t('details.delete'), ACTION_DELETE, true)
@@ -283,7 +292,8 @@ struct ItemDetailsPage {
     enabled: boolean
   ) {
     Column({ space: 8 }) {
-      if (action === ACTION_DOWNLOAD && this.isDownloading) {
+      if ((action === ACTION_DOWNLOAD && this.isDownloading)
+        || (action === ACTION_OPEN && this.isOpening)) {
         LoadingProgress().width(28).height(28).color(this.theme.primary)
       } else {
         Text(icon)
@@ -303,7 +313,7 @@ struct ItemDetailsPage {
         return;
       }
       if (action === ACTION_OPEN) {
-        this.openOfflineFile();
+        this.onOpen();
       } else if (action === ACTION_DELETE) {
         this.onDelete();
       } else if (action === ACTION_DOWNLOAD) {
@@ -455,7 +465,8 @@ struct ItemDetailsPage {
       .width('100%')
       .padding({ left: 8, right: 16, top: 12, bottom: 12 })
       .alignItems(VerticalAlign.Center)
-      .backgroundColor(this.theme.surface)
+      .backgroundColor(this.theme.background)
+      .border({ width: { bottom: 1 }, color: this.theme.divider })
 
       Row() {
         Scroll() {
@@ -483,7 +494,7 @@ struct ItemDetailsPage {
         .align(Alignment.Start).width('100%')
       }
       .width('100%').padding({ top: 10, bottom: 10 })
-      .backgroundColor(this.theme.surface)
+      .backgroundColor(this.theme.background)
 
       Divider().color(this.theme.divider)
 
@@ -544,7 +555,7 @@ struct ItemDetailsPage {
           .fontColor(this.theme.textPrimary)
           .onClick(() => { this.closeMovePicker(); })
 
-        Button(this.isProcessing ? t('common.moving') : t('fb.moveHere'))
+        Button(this.isProcessing ? t('fb.moving') : t('fb.moveHere'))
           .layoutWeight(1)
           .backgroundColor(this.isProcessing
             ? this.theme.border : this.theme.primary)
@@ -554,7 +565,8 @@ struct ItemDetailsPage {
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 20 })
-      .backgroundColor(this.theme.surface)
+      .backgroundColor(this.theme.background)
+      .border({ width: { top: 1 }, color: this.theme.divider })
     }
     .width('100%').height('100%')
     .backgroundColor(this.theme.background)
@@ -648,12 +660,13 @@ struct ItemDetailsPage {
   private dateLabel(ms: number | undefined): string {
     if (ms === undefined) return '—';
     const d = new Date(ms);
-    const months: string[] = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    const monthKeys: string[] = [
+      'fb.month.jan', 'fb.month.feb', 'fb.month.mar', 'fb.month.apr',
+      'fb.month.may', 'fb.month.jun', 'fb.month.jul', 'fb.month.aug',
+      'fb.month.sep', 'fb.month.oct', 'fb.month.nov', 'fb.month.dec'
     ];
     const pad = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
-    const month: string = months[d.getMonth()];
+    const month: string = t(monthKeys[d.getMonth()]);
     return `${month} ${d.getDate()}, ${d.getFullYear()} ` +
       `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
@@ -668,31 +681,44 @@ struct ItemDetailsPage {
   }
 
   // ===========================================================================
-  // Open offline
+  // Open
   // ===========================================================================
 
-  private async openOfflineFile(): Promise<void> {
-    if (this.item === null || this.context === null) return;
+  private async onOpen(): Promise<void> {
+    if (this.item === null || this.cloudProvider === null
+      || this.context === null) return;
+    if (this.item.type !== CloudItemType.FILE) return;
+    if (this.isOpening) return;
+
     const ctx: common.UIAbilityContext = this.context;
+    const provider: ICloudProvider = this.cloudProvider;
 
-    const outcome: OpenOutcome = await OfflineOpener.open(ctx, this.item.id);
+    // Offline files open instantly — no busy state.
+    if (this.isOffline) {
+      try {
+        await FilePreviewer.open(ctx, this.item, provider);
+      } catch (e) {
+        const readable: string = formatError(e as Error);
+        Logger.error(TAG, `onOpen (offline) failed: ${readable}`);
+        promptAction.showToast({
+          message: `${t('fb.cannotOpen')}: ${readable}`
+        });
+      }
+      return;
+    }
 
-    if (outcome.result === OfflineOpenResult.OK) {
-      return;
+    this.isOpening = true;
+    try {
+      await FilePreviewer.open(ctx, this.item, provider);
+    } catch (e) {
+      const readable: string = formatError(e as Error);
+      Logger.error(TAG, `onOpen failed: ${readable}`);
+      promptAction.showToast({
+        message: `${t('fb.cannotOpen')}: ${readable}`
+      });
+    } finally {
+      this.isOpening = false;
     }
-    if (outcome.result === OfflineOpenResult.MISSING) {
-      promptAction.showToast({ message: t('fb.offlineMissing') });
-      return;
-    }
-    if (outcome.result === OfflineOpenResult.GONE) {
-      this.isOffline = false;
-      promptAction.showToast({ message: t('fb.offlineGone') });
-      return;
-    }
-    const msg: string = outcome.message !== undefined ? outcome.message : '';
-    promptAction.showToast({
-      message: `${t('fb.cannotOpen')}: ${msg}`
-    });
   }
 
   // ===========================================================================

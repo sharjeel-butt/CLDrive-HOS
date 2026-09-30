@@ -9,7 +9,7 @@ permalink: /privacy/zh-Hans/
 
 **生效日期：** 2026 年 9 月 29 日
 **最后更新：** 2026 年 9 月 29 日
-**适用于：** CLDrive Manager 1.1.0 及以上版本
+**适用于：** CLDrive Manager 1.3.0 及以上版本
 
 本隐私政策描述 CLDrive Manager（"本应用"、"我们"）在您使用我们的 HarmonyOS
 应用时如何处理您的信息。

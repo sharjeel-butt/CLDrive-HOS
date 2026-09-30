@@ -53,7 +53,7 @@ struct PrivacyPolicyPage {
     const name: string = info.appName;
     if (name.length === 0 || name === '—'
       || name.startsWith('$string:') || name.startsWith('@string/')) {
-      return 'CLDrive';
+      return info.bundleName;
     }
     return name;
   }

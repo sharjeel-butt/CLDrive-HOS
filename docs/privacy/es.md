@@ -9,7 +9,7 @@ permalink: /privacy/es/
 
 **Fecha de entrada en vigor:** 29 de septiembre de 2026
 **Última actualización:** 29 de septiembre de 2026
-**Aplica a:** CLDrive Manager versión 1.1.0 y posteriores
+**Aplica a:** CLDrive Manager versión 1.3.0 y posteriores
 
 Esta Política de Privacidad describe cómo CLDrive Manager ("la Aplicación",
 "nosotros", "nuestro") maneja tu información cuando usas nuestra aplicación

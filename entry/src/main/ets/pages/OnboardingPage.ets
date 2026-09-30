@@ -138,7 +138,15 @@ struct OnboardingPage {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      if (item.enabled) {
+      if (item.comingSoon) {
+        Text(t('onb.comingSoon'))
+          .fontSize(10)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.theme.textTertiary)
+          .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+          .backgroundColor(this.theme.chipBg)
+          .borderRadius(8)
+      } else if (item.enabled) {
         Text('›').fontSize(28).fontColor(this.theme.textTertiary)
       }
     }

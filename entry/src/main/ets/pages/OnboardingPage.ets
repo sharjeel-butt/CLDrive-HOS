@@ -14,6 +14,9 @@ import { Logger } from '../utils/Logger';
 
 const TAG: string = 'OnboardingPage';
 
+const SIZE_HEADER_ICON = 24;
+const SIZE_PROVIDER_CHEVRON = 24;
+
 @Entry
 @Component
 struct OnboardingPage {
@@ -37,16 +40,20 @@ struct OnboardingPage {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
   }
 
+  @Builder
+  appIcon(media: Resource, size: number, color: string) {
+    Image(media)
+      .width(size)
+      .height(size)
+      .fillColor(color)
+      .draggable(false)
+      .objectFit(ImageFit.Contain)
+  }
+
   private webDarkMode(): WebDarkMode {
     return this.theme.isDark ? WebDarkMode.On : WebDarkMode.Off;
   }
 
-  /**
-   * Called before the system back gesture/button pops the page.
-   * During the WebView step, back first consumes the Web's own
-   * history; if none remains, return to the provider picker instead
-   * of popping the whole OnboardingPage.
-   */
   onBackPress(): boolean {
     if (this.vm.step === STEP_SELECT_PROVIDER) {
       return false;
@@ -80,12 +87,17 @@ struct OnboardingPage {
     Column({ space: 8 }) {
       Row() {
         if (this.vm.isAddMode && this.vm.step === STEP_SELECT_PROVIDER) {
-          Button('‹ ' + t('common.cancel'))
-            .backgroundColor(Color.Transparent)
-            .fontColor(this.theme.primary)
-            .fontSize(15)
-            .padding(0)
-            .onClick(() => { this.vm.onCancel(); })
+          Row({ space: 4 }) {
+            this.appIcon($r('app.media.ic_chevron_left'),
+              SIZE_HEADER_ICON, this.theme.primary)
+            Text(t('common.cancel'))
+              .fontSize(15)
+              .fontColor(this.theme.primary)
+          }
+          .padding({ top: 6, bottom: 6, right: 8 })
+          .alignItems(VerticalAlign.Center)
+          .onClick(() => { this.vm.onCancel(); })
+
           Blank()
         }
       }
@@ -147,7 +159,8 @@ struct OnboardingPage {
           .backgroundColor(this.theme.chipBg)
           .borderRadius(8)
       } else if (item.enabled) {
-        Text('›').fontSize(28).fontColor(this.theme.textTertiary)
+        this.appIcon($r('app.media.ic_chevron_right'),
+          SIZE_PROVIDER_CHEVRON, this.theme.textTertiary)
       }
     }
     .width('100%')
@@ -155,6 +168,7 @@ struct OnboardingPage {
     .backgroundColor(this.theme.surface)
     .borderRadius(12)
     .opacity(item.enabled ? 1.0 : 0.55)
+    .alignItems(VerticalAlign.Center)
     .onClick(() => {
       if (item.enabled) {
         this.vm.onSelectProvider(item.type);
@@ -166,12 +180,17 @@ struct OnboardingPage {
   buildAuthView() {
     Column() {
       Row() {
-        Button('‹ ' + t('priv.goBack'))
-          .backgroundColor(Color.Transparent)
-          .fontColor(this.theme.primary)
-          .fontSize(15)
-          .padding(0)
-          .onClick(() => { this.vm.onBack(); })
+        Row({ space: 4 }) {
+          this.appIcon($r('app.media.ic_chevron_left'),
+            SIZE_HEADER_ICON, this.theme.primary)
+          Text(t('priv.goBack'))
+            .fontSize(15)
+            .fontColor(this.theme.primary)
+        }
+        .padding({ top: 6, bottom: 6, right: 8 })
+        .alignItems(VerticalAlign.Center)
+        .onClick(() => { this.vm.onBack(); })
+
         Blank()
       }
       .width('100%')

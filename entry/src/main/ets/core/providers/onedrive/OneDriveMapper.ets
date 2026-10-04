@@ -69,6 +69,20 @@ export interface GraphUser {
   userPrincipalName?: string;
 }
 
+export interface GraphQuota {
+  deleted?: number;
+  remaining?: number;
+  state?: string;
+  total?: number;
+  used?: number;
+}
+
+export interface GraphDrive {
+  id: string;
+  driveType: string;
+  quota?: GraphQuota;
+}
+
 // ---------------------------------------------------------------------------
 // Annotation accessor
 // ---------------------------------------------------------------------------

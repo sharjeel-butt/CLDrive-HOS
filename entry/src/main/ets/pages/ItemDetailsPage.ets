@@ -33,6 +33,13 @@ const ACTION_DOWNLOAD: number = 1;
 const ACTION_MOVE: number = 2;
 const ACTION_OPEN: number = 3;
 
+const SIZE_HEADER_ICON = 24;
+const SIZE_ACTION_ICON = 28;
+const SIZE_NAME_EDIT_ICON = 22;
+const SIZE_PICKER_BACK = 24;
+const SIZE_PICKER_ROW_ICON = 22;
+const SIZE_PICKER_CHEVRON = 18;
+
 interface DetailsParams {
   accountId: string;
   itemId: string;
@@ -46,27 +53,22 @@ interface FolderCrumb {
 @Entry
 @Component
 struct ItemDetailsPage {
-  // ---- Item state ----
   @State private accountId: string = '';
   @State private itemId: string = '';
   @State private item: CloudItem | null = null;
   @State private isLoading: boolean = true;
   @State private errorMessage: string = '';
 
-  // ---- Offline ----
   @State private isOffline: boolean = false;
   @State private offlineBusy: boolean = false;
 
-  // ---- Rename ----
   @State private showRenameDialog: boolean = false;
   @State private renameText: string = '';
   @State private isProcessing: boolean = false;
 
-  // ---- Download / Open ----
   @State private isDownloading: boolean = false;
   @State private isOpening: boolean = false;
 
-  // ---- Move picker ----
   @State private showMovePicker: boolean = false;
   @State private movePickerFolderId: string = 'root';
   @State private movePickerItems: CloudItem[] = [];
@@ -74,11 +76,9 @@ struct ItemDetailsPage {
   @State private movePickerLoading: boolean = false;
   @State private movePickerError: string = '';
 
-  // ---- Theme / i18n ----
   @State private theme: ThemeColors = ThemeManager.get().colors();
   @StorageLink('languageVersion') langVersion: number = 0;
 
-  // ---- Dependencies ----
   private cloudProvider: ICloudProvider | null = null;
   private context: common.UIAbilityContext | null = null;
 
@@ -98,9 +98,15 @@ struct ItemDetailsPage {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
   }
 
-  // ===========================================================================
-  // Build
-  // ===========================================================================
+  @Builder
+  appIcon(media: Resource, size: number, color: string) {
+    Image(media)
+      .width(size)
+      .height(size)
+      .fillColor(color)
+      .draggable(false)
+      .objectFit(ImageFit.Contain)
+  }
 
   build() {
     Stack() {
@@ -136,12 +142,12 @@ struct ItemDetailsPage {
   @Builder
   buildHeader() {
     Row({ space: 12 }) {
-      Text('←')
-        .fontSize(24)
-        .fontColor(this.theme.textPrimary)
-        .width(40)
-        .textAlign(TextAlign.Center)
-        .onClick(() => { router.back(); })
+      Row() {
+        this.appIcon($r('app.media.ic_back'), SIZE_HEADER_ICON, this.theme.textPrimary)
+      }
+      .width(40).height(40)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => { router.back(); })
 
       Text(t('details.title'))
         .fontSize(20)
@@ -273,11 +279,15 @@ struct ItemDetailsPage {
   buildActionButtons() {
     Row() {
       if (this.item !== null && this.item.type === CloudItemType.FILE) {
-        this.buildActionButton('📂', t('details.open'), ACTION_OPEN, true)
+        this.buildActionButton($r('app.media.ic_open'),
+          t('details.open'), ACTION_OPEN, true)
       }
-      this.buildActionButton('🗑', t('details.delete'), ACTION_DELETE, true)
-      this.buildActionButton('⬇', t('details.download'), ACTION_DOWNLOAD, this.canDownload())
-      this.buildActionButton('→', t('details.move'), ACTION_MOVE, true)
+      this.buildActionButton($r('app.media.ic_delete'),
+        t('details.delete'), ACTION_DELETE, true)
+      this.buildActionButton($r('app.media.ic_download'),
+        t('details.download'), ACTION_DOWNLOAD, this.canDownload())
+      this.buildActionButton($r('app.media.ic_move'),
+        t('details.move'), ACTION_MOVE, true)
     }
     .width('100%')
     .padding({ left: 16, right: 16 })
@@ -286,7 +296,7 @@ struct ItemDetailsPage {
 
   @Builder
   buildActionButton(
-    icon: string,
+    iconRes: Resource,
     label: string,
     action: number,
     enabled: boolean
@@ -294,11 +304,11 @@ struct ItemDetailsPage {
     Column({ space: 8 }) {
       if ((action === ACTION_DOWNLOAD && this.isDownloading)
         || (action === ACTION_OPEN && this.isOpening)) {
-        LoadingProgress().width(28).height(28).color(this.theme.primary)
+        LoadingProgress().width(SIZE_ACTION_ICON).height(SIZE_ACTION_ICON)
+          .color(this.theme.primary)
       } else {
-        Text(icon)
-          .fontSize(28)
-          .fontColor(enabled ? this.theme.textPrimary : this.theme.textTertiary)
+        this.appIcon(iconRes, SIZE_ACTION_ICON,
+          enabled ? this.theme.textPrimary : this.theme.textTertiary)
       }
 
       Text(label)
@@ -334,15 +344,17 @@ struct ItemDetailsPage {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
 
-      Text('✎')
-        .fontSize(22)
-        .fontColor(this.theme.textSecondary)
-        .width(40)
-        .textAlign(TextAlign.Center)
-        .onClick(() => { this.openRenameDialog(); })
+      Row() {
+        this.appIcon($r('app.media.ic_edit'),
+          SIZE_NAME_EDIT_ICON, this.theme.textSecondary)
+      }
+      .width(40).height(40)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => { this.openRenameDialog(); })
     }
     .width('100%')
     .padding({ left: 20, right: 16, top: 12, bottom: 12 })
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
@@ -451,10 +463,12 @@ struct ItemDetailsPage {
   buildMovePicker() {
     Column() {
       Row({ space: 12 }) {
-        Text('←')
-          .fontSize(24).fontColor(this.theme.textPrimary)
-          .width(32).textAlign(TextAlign.Center)
-          .onClick(() => { this.closeMovePicker(); })
+        Row() {
+          this.appIcon($r('app.media.ic_back'), SIZE_PICKER_BACK, this.theme.textPrimary)
+        }
+        .width(36).height(36)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => { this.closeMovePicker(); })
 
         Text(t('fb.pickDestMove'))
           .fontSize(16).fontWeight(FontWeight.Medium)
@@ -483,12 +497,13 @@ struct ItemDetailsPage {
                   .textAlign(TextAlign.Start)
                   .onClick(() => { this.pickerGoToCrumb(index); })
                 if (index < this.movePickerCrumbs.length - 1) {
-                  Text('››').fontSize(11).fontColor(this.theme.textTertiary)
+                  this.appIcon($r('app.media.ic_chevron_right'),
+                    12, this.theme.textTertiary)
                 }
               }
             }, (crumb: FolderCrumb) => crumb.id)
           }
-          .height(22).padding({ left: 16, right: 16 })
+          .height(24).padding({ left: 16, right: 16 })
         }
         .scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
         .align(Alignment.Start).width('100%')
@@ -517,7 +532,7 @@ struct ItemDetailsPage {
         .layoutWeight(1).justifyContent(FlexAlign.Center).padding(24).width('100%')
       } else if (this.movePickerItems.length === 0) {
         Column({ space: 10 }) {
-          Text('📁').fontSize(42)
+          this.appIcon($r('app.media.ic_folder'), 48, this.theme.textTertiary)
           Text(t('fb.noSubfolders'))
             .fontSize(14).fontColor(this.theme.textSecondary)
           Text(t('fb.noSubfoldersHint'))
@@ -529,15 +544,26 @@ struct ItemDetailsPage {
         List({ space: 1 }) {
           ForEach(this.movePickerItems, (folder: CloudItem) => {
             ListItem() {
-              Row({ space: 12 }) {
-                Text('📁').fontSize(24).width(32).textAlign(TextAlign.Center)
+              Row({ space: 14 }) {
+                Stack({ alignContent: Alignment.Center }) {
+                  Column()
+                    .width(40).height(40)
+                    .borderRadius(10)
+                    .backgroundColor(this.theme.primarySoft)
+                  this.appIcon($r('app.media.ic_folder'), 22, this.theme.primary)
+                }
+                .width(40).height(40)
+
                 Text(folder.name)
                   .fontSize(15).fontColor(this.theme.textPrimary)
                   .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                   .layoutWeight(1)
-                Text('›').fontSize(20).fontColor(this.theme.textTertiary)
+
+                this.appIcon($r('app.media.ic_chevron_right'),
+                  SIZE_PICKER_CHEVRON, this.theme.textTertiary)
               }
               .width('100%').padding({ left: 16, right: 16, top: 14, bottom: 14 })
+              .alignItems(VerticalAlign.Center)
               .backgroundColor(this.theme.surface)
               .onClick(() => { this.pickerOpenFolder(folder); })
             }
@@ -693,7 +719,6 @@ struct ItemDetailsPage {
     const ctx: common.UIAbilityContext = this.context;
     const provider: ICloudProvider = this.cloudProvider;
 
-    // Offline files open instantly — no busy state.
     if (this.isOffline) {
       try {
         await FilePreviewer.open(ctx, this.item, provider);

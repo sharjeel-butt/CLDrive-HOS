@@ -4,6 +4,7 @@ import { OneDriveConfig } from '../../../config/OneDriveConfig';
 import {
   GraphDriveItem,
   GraphUser,
+  GraphDrive,
   getGraphDownloadUrl
 } from './OneDriveMapper';
 import { http } from '@kit.NetworkKit';
@@ -77,6 +78,12 @@ export class OneDriveApiClient {
     return RequestBuilder.get(`${this.base}/me`)
       .bearer(accessToken)
       .executeJson<GraphUser>();
+  }
+
+  async getDriveInfo(accessToken: string): Promise<GraphDrive> {
+    return RequestBuilder.get(`${this.base}/me/drive`)
+      .bearer(accessToken)
+      .executeJson<GraphDrive>();
   }
 
   // ===========================================================================

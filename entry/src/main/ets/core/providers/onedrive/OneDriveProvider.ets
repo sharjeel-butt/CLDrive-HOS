@@ -3,6 +3,8 @@ import { CloudItem } from '../../models/CloudItem';
 import { UserProfile } from '../../models/UserProfile';
 import { CloudProviderType } from '../../models/CloudProviderType';
 import { DownloadInfo } from '../../models/DownloadInfo';
+import { StorageInfo, createStorageInfo } from '../../models/StorageInfo';
+import { GraphDrive } from './OneDriveMapper';
 import {
   OneDriveApiClient,
   UploadSessionResponse
@@ -64,6 +66,17 @@ export class OneDriveProvider implements ICloudProvider {
       provider: this.providerType
     };
     return profile;
+  }
+
+  async getStorageInfo(): Promise<StorageInfo> {
+    const drive: GraphDrive = await this.run(t => this.api.getDriveInfo(t));
+    const used: number =
+      drive.quota !== undefined && drive.quota.used !== undefined
+        ? drive.quota.used : 0;
+    const total: number =
+      drive.quota !== undefined && drive.quota.total !== undefined
+        ? drive.quota.total : 0;
+    return createStorageInfo(used, total);
   }
 
   // ===========================================================================

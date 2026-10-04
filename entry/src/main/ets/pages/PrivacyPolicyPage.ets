@@ -11,19 +11,50 @@ import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
 
 const TAG: string = 'PrivacyPolicyPage';
 
+const SIZE_HEADER_ICON = 24;
+const SIZE_POINT_ICON = 22;
+const SIZE_POINT_BOX = 44;
+const SIZE_LINK_ICON = 18;
+const SIZE_LINK_CHEVRON = 20;
+const SIZE_CHECKMARK = 24;
+
 interface PrivacyPoint {
-  icon: string;
+  iconRes: Resource;
   titleKey: string;
   bodyKey: string;
 }
 
 const PRIVACY_POINTS: PrivacyPoint[] = [
-  { icon: '🔒', titleKey: 'priv.point1.title', bodyKey: 'priv.point1.body' },
-  { icon: '☁',  titleKey: 'priv.point2.title', bodyKey: 'priv.point2.body' },
-  { icon: '🚫', titleKey: 'priv.point3.title', bodyKey: 'priv.point3.body' },
-  { icon: '🔑', titleKey: 'priv.point4.title', bodyKey: 'priv.point4.body' },
-  { icon: '🤝', titleKey: 'priv.point5.title', bodyKey: 'priv.point5.body' },
-  { icon: '⚙',  titleKey: 'priv.point6.title', bodyKey: 'priv.point6.body' }
+  {
+    iconRes: $r('app.media.ic_privacy_lock'),
+    titleKey: 'priv.point1.title',
+    bodyKey: 'priv.point1.body'
+  },
+  {
+    iconRes: $r('app.media.ic_privacy_cloud'),
+    titleKey: 'priv.point2.title',
+    bodyKey: 'priv.point2.body'
+  },
+  {
+    iconRes: $r('app.media.ic_privacy_block'),
+    titleKey: 'priv.point3.title',
+    bodyKey: 'priv.point3.body'
+  },
+  {
+    iconRes: $r('app.media.ic_privacy_key'),
+    titleKey: 'priv.point4.title',
+    bodyKey: 'priv.point4.body'
+  },
+  {
+    iconRes: $r('app.media.ic_shared'),
+    titleKey: 'priv.point5.title',
+    bodyKey: 'priv.point5.body'
+  },
+  {
+    iconRes: $r('app.media.ic_settings'),
+    titleKey: 'priv.point6.title',
+    bodyKey: 'priv.point6.body'
+  }
 ];
 
 @Entry
@@ -48,12 +79,22 @@ struct PrivacyPolicyPage {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
   }
 
+  @Builder
+  appIcon(media: Resource, size: number, color: string) {
+    Image(media)
+      .width(size)
+      .height(size)
+      .fillColor(color)
+      .draggable(false)
+      .objectFit(ImageFit.Contain)
+  }
+
   private appDisplayName(): string {
     const info: AppVersionInfo = getAppVersionInfo();
     const name: string = info.appName;
     if (name.length === 0 || name === '—'
       || name.startsWith('$string:') || name.startsWith('@string/')) {
-      return info.bundleName;
+      return info.bundleName.length > 0 ? info.bundleName : 'CLDrive';
     }
     return name;
   }
@@ -156,9 +197,10 @@ struct PrivacyPolicyPage {
           ForEach(PRIVACY_POINTS, (point: PrivacyPoint) => {
             Row({ space: 14 }) {
               Column() {
-                Text(point.icon).fontSize(20)
+                this.appIcon(point.iconRes, SIZE_POINT_ICON, this.theme.primary)
               }
-              .width(40).height(40).borderRadius(10)
+              .width(SIZE_POINT_BOX).height(SIZE_POINT_BOX)
+              .borderRadius(10)
               .backgroundColor(this.theme.primarySoft)
               .justifyContent(FlexAlign.Center)
               .alignItems(HorizontalAlign.Center)
@@ -187,13 +229,14 @@ struct PrivacyPolicyPage {
           }, (point: PrivacyPoint) => point.titleKey)
 
           Row({ space: 8 }) {
-            Text('📄').fontSize(16)
+            this.appIcon($r('app.media.ic_file'), SIZE_LINK_ICON, this.theme.primary)
             Text(t('priv.viewOnline'))
               .fontSize(14)
               .fontColor(this.theme.primary)
               .fontWeight(FontWeight.Medium)
               .layoutWeight(1)
-            Text('›').fontSize(20).fontColor(this.theme.primary)
+            this.appIcon($r('app.media.ic_chevron_right'),
+              SIZE_LINK_CHEVRON, this.theme.primary)
           }
           .width('100%')
           .padding({ left: 14, right: 14, top: 14, bottom: 14 })
@@ -214,11 +257,20 @@ struct PrivacyPolicyPage {
 
       Column({ space: 16 }) {
         Row({ space: 12 }) {
-          Text(this.agreed ? '☑' : '☐')
-            .fontSize(24)
-            .fontColor(this.agreed
-              ? this.theme.primary : this.theme.textTertiary)
-            .width(28).textAlign(TextAlign.Center)
+          Row() {
+            if (this.agreed) {
+              this.appIcon($r('app.media.ic_check'), SIZE_CHECKMARK, this.theme.primary)
+            } else {
+              Column()
+                .width(SIZE_CHECKMARK).height(SIZE_CHECKMARK)
+                .borderRadius(6)
+                .border({ width: 2, color: this.theme.textTertiary })
+            }
+          }
+          .width(SIZE_CHECKMARK + 4)
+          .height(SIZE_CHECKMARK + 4)
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center)
 
           Text(t('priv.agreeCheck'))
             .fontSize(13)
@@ -239,7 +291,7 @@ struct PrivacyPolicyPage {
             .enabled(!this.isProcessing)
             .onClick(() => { this.onDecline(); })
 
-          Button(this.isProcessing ? t('common.saving') : t('priv.agree'))
+          Button(this.isProcessing ? t('priv.saving') : t('priv.agree'))
             .layoutWeight(1.5)
             .backgroundColor(this.agreed
               ? this.theme.primary : this.theme.border)

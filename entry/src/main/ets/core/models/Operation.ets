@@ -22,24 +22,12 @@ export enum OperationStatus {
   CANCELLED = 'cancelled'
 }
 
-/**
- * Everything needed to re-execute a failed operation.
- * Only the fields relevant to the operation's type are populated.
- */
 export interface RetryPayload {
-  /** DELETE: the cloud item ID (also mirrored in Operation.itemId). */
   itemId?: string;
-
-  /** UPLOAD: the destination folder ID and the local file URI. */
   parentId?: string;
   localUri?: string;
-
-  /** MOVE / COPY: the destination folder ID. */
   targetFolderId?: string;
-  /** MOVE / COPY: pre-resolved name, if the user chose Keep Both. */
   finalName?: string;
-
-  /** DOWNLOAD: the picker-provided destination URI. */
   targetUri?: string;
 }
 
@@ -57,7 +45,6 @@ export interface Operation {
   batchTotal: number;
   errorMessage: string;
   retryPayload?: RetryPayload;
-  /** True while an operation is being retried after a previous failure. */
   isRetry: boolean;
 }
 
@@ -100,17 +87,6 @@ export function operationTypeLabel(type: OperationType): string {
   }
 }
 
-export function operationTypeIcon(type: OperationType): string {
-  switch (type) {
-    case OperationType.COPY: return '⧉';
-    case OperationType.MOVE: return '→';
-    case OperationType.DELETE: return '🗑';
-    case OperationType.DOWNLOAD: return '⬇';
-    case OperationType.UPLOAD: return '⬆';
-    default: return '•';
-  }
-}
-
 export function operationStatusLabel(status: OperationStatus): string {
   switch (status) {
     case OperationStatus.QUEUED: return t('fb.queued');
@@ -119,14 +95,6 @@ export function operationStatusLabel(status: OperationStatus): string {
     case OperationStatus.FAILED: return t('fb.failed');
     case OperationStatus.CANCELLED: return t('fb.cancelled');
     default: return '';
-  }
-}
-
-export function operationItemKindIcon(kind: OperationItemKind): string {
-  switch (kind) {
-    case OperationItemKind.FOLDER: return '📁';
-    case OperationItemKind.FILE: return '📄';
-    default: return '•';
   }
 }
 

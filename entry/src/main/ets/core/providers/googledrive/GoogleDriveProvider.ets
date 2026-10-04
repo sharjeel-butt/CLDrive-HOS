@@ -6,13 +6,19 @@ import { CloudProviderType } from '../../models/CloudProviderType';
 import { GoogleDriveApiClient } from './GoogleDriveApiClient';
 import { GoogleDriveAuthProvider } from './GoogleDriveAuthProvider';
 import {
-  GoogleDriveMapper, GoogleAbout, GoogleFile, GoogleUser
+  GoogleDriveMapper, GoogleAbout, GoogleFile, GoogleUser, isGoogleNativeFormat,
+  MIME_GOOGLE_DOC,
+  MIME_GOOGLE_SHEET,
+  MIME_GOOGLE_SLIDE,
+  MIME_GOOGLE_DRAWING
 } from './GoogleDriveMapper';
 import { TokenRefresher } from '../../auth/TokenRefresher';
 import { LocalFileService } from '../../../utils/FileUtil';
 import { GoogleDriveConfig } from '../../../config/GoogleDriveConfig';
 import { Logger } from '../../../utils/Logger';
 import { DownloadInfo } from '../../models/DownloadInfo';
+import { StorageInfo, createStorageInfo } from '../../models/StorageInfo';
+import { GoogleStorageQuota } from './GoogleDriveMapper';
 
 const TAG: string = 'GoogleDriveProvider';
 
@@ -72,6 +78,22 @@ export class GoogleDriveProvider implements ICloudProvider {
   async search(query: string): Promise<CloudItem[]> {
     const files = await this.run(t => this.api.search(t, query));
     return GoogleDriveMapper.toCloudItems(files);
+  }
+
+  async getStorageInfo(): Promise<StorageInfo> {
+    const quota: GoogleStorageQuota | null =
+      await this.run(t => this.api.getStorageQuota(t));
+    if (quota === null) {
+      return createStorageInfo(0, 0);
+    }
+    const used: number = quota.usage !== undefined
+      ? parseInt(quota.usage, 10) : 0;
+    const total: number = quota.limit !== undefined
+      ? parseInt(quota.limit, 10) : 0;
+    return createStorageInfo(
+      isNaN(used) ? 0 : used,
+      isNaN(total) ? 0 : total
+    );
   }
 
   // ---- Mutations ----
@@ -195,26 +217,48 @@ export class GoogleDriveProvider implements ICloudProvider {
   }
 
   async getDownloadInfo(itemId: string): Promise<DownloadInfo> {
-    // Fetch a fresh access token via the TokenRefresher.
-    // We use getFile() here just to force the token refresh path; the file
-    // metadata itself isn't needed for the download.
     return this.run(async (token: string): Promise<DownloadInfo> => {
-      const url =
-        `${GoogleDriveConfig.DRIVE_API}/files/${encodeURIComponent(itemId)}?alt=media`;
+      // Fetch metadata so we can route native formats to the export
+      // endpoint. One extra round-trip, but the alt=media URL 403s
+      // for Docs/Sheets/Slides/Drawings.
+      const file: GoogleFile = await this.api.getFile(token, itemId);
+      const mime: string = file.mimeType;
 
       const headers = new Map<string, string>();
       headers.set('Authorization', `Bearer ${token}`);
-      // Google's CDN rejects requests without a User-Agent.
-      headers.set(
-        'User-Agent',
-        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 ' +
-          '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
-      );
-      // Some Google endpoints require a permissive Accept header.
       headers.set('Accept', '*/*');
 
-      return { url: url, headers: headers };
+      if (isGoogleNativeFormat(mime)) {
+        const exportMime: string = GoogleDriveProvider.exportMimeFor(mime);
+        if (exportMime.length === 0) {
+          throw new Error(`Cannot export Google format: ${mime}`);
+        }
+        const url = `${GoogleDriveConfig.DRIVE_API}/files/` +
+          `${encodeURIComponent(itemId)}/export?mimeType=` +
+          `${encodeURIComponent(exportMime)}`;
+        return { url, headers };
+      }
+
+      const url = `${GoogleDriveConfig.DRIVE_API}/files/` +
+        `${encodeURIComponent(itemId)}?alt=media`;
+      return { url, headers };
     });
+  }
+
+  private static exportMimeFor(googleMime: string): string {
+    if (googleMime === MIME_GOOGLE_DOC) {
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    if (googleMime === MIME_GOOGLE_SHEET) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    if (googleMime === MIME_GOOGLE_SLIDE) {
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    }
+    if (googleMime === MIME_GOOGLE_DRAWING) {
+      return 'image/png';
+    }
+    return '';
   }
 
   // ---------------------------------------------------------------------------

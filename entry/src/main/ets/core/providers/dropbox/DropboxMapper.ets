@@ -25,6 +25,8 @@ export interface DropboxMetadata {
   content_hash?: string;
 }
 
+
+
 export interface DropboxListFolderResponse {
   entries: DropboxMetadata[];
   cursor: string;
@@ -67,6 +69,16 @@ export interface DropboxCurrentAccount {
   email: string;
   email_verified: boolean;
   profile_photo_url?: string;
+}
+
+export interface DropboxSpaceAllocation {
+  '.tag': string;      // 'individual' | 'team'
+  allocated?: number;
+}
+
+export interface DropboxSpaceUsage {
+  used: number;
+  allocation: DropboxSpaceAllocation;
 }
 
 // ---------------------------------------------------------------------------

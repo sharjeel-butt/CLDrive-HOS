@@ -18,6 +18,7 @@ build-profile.json5.bak
 **/OneDriveConfig.ets
 **/GoogleDriveConfig.ets
 **/DropboxConfig.ets
+**/Endpoints.ets
 **/secrets.json
 *.keystore
 *.p12

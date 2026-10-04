@@ -11,30 +11,16 @@ const TAG: string = 'PrivacyPolicyViewerPage';
 const POLICY_BASE: string =
   'https://sharjeel-butt.github.io/CLDrive-HOS';
 
-/**
- * Return the online privacy policy URL for a language.
- *
- * Languages with a translated policy page have their own path.
- * Any language without one falls back to English so the WebView
- * never lands on a 404.
- *
- * URL layout mirrors the GitHub Pages site built from `docs/`:
- *   /                    → English landing (README)
- *   /privacy/en/         → English policy
- *   /privacy/ru/         → Russian policy
- *   /privacy/zh-Hans/    → Simplified Chinese policy
- *   /privacy/ar/         → Arabic policy
- *   /privacy/es/         → Spanish policy
- */
 function policyUrlFor(lang: string): string {
+  if (lang === 'en')      return `${POLICY_BASE}/privacy/en/`;
   if (lang === 'ru')      return `${POLICY_BASE}/privacy/ru/`;
   if (lang === 'zh-Hans') return `${POLICY_BASE}/privacy/zh-Hans/`;
   if (lang === 'ar')      return `${POLICY_BASE}/privacy/ar/`;
   if (lang === 'es')      return `${POLICY_BASE}/privacy/es/`;
-  if (lang === 'en')      return `${POLICY_BASE}/privacy/en/`;
-  // Every other language falls back to English.
   return `${POLICY_BASE}/privacy/en/`;
 }
+
+const SIZE_HEADER_ICON = 24;
 
 @Entry
 @Component
@@ -63,6 +49,16 @@ struct PrivacyPolicyViewerPage {
     ThemeManager.get().unsubscribe(this.onThemeChanged);
   }
 
+  @Builder
+  appIcon(media: Resource, size: number, color: string) {
+    Image(media)
+      .width(size)
+      .height(size)
+      .fillColor(color)
+      .draggable(false)
+      .objectFit(ImageFit.Contain)
+  }
+
   private webDarkMode(): WebDarkMode {
     return this.theme.isDark ? WebDarkMode.On : WebDarkMode.Off;
   }
@@ -70,12 +66,12 @@ struct PrivacyPolicyViewerPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Text('←')
-          .fontSize(24)
-          .fontColor(this.theme.textPrimary)
-          .width(40)
-          .textAlign(TextAlign.Center)
-          .onClick(() => { router.back(); })
+        Row() {
+          this.appIcon($r('app.media.ic_back'), SIZE_HEADER_ICON, this.theme.textPrimary)
+        }
+        .width(40).height(40)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => { router.back(); })
 
         Column({ space: 2 }) {
           Text(t('viewer.title'))
@@ -106,9 +102,8 @@ struct PrivacyPolicyViewerPage {
       .width('100%')
       .padding({ left: 8, right: 16, top: 12, bottom: 12 })
       .alignItems(VerticalAlign.Center)
-      .backgroundColor(this.theme.surface)
-
-      Divider().color(this.theme.divider)
+      .backgroundColor(this.theme.background)
+      .border({ width: { bottom: 1 }, color: this.theme.divider })
 
       Stack() {
         Web({ src: this.url, controller: this.controller })
@@ -152,7 +147,7 @@ struct PrivacyPolicyViewerPage {
 
         if (this.errorMessage.length > 0) {
           Column({ space: 14 }) {
-            Text('🌐').fontSize(42)
+            this.appIcon($r('app.media.ic_privacy_block'), 48, this.theme.textTertiary)
             Text(t('viewer.error'))
               .fontSize(15)
               .fontWeight(FontWeight.Bold)

@@ -4,20 +4,30 @@ import { ThemeMode } from '../core/theme/ThemeMode';
 import { ThemeColors } from '../core/theme/ThemeColors';
 import { UiPrefs } from '../core/settings/UiPrefs';
 import { LanguageManager } from '../core/i18n/LanguageManager';
-import { LanguageOption, LANGUAGES, LangCode, languageByCode, availableLanguages } from '../core/i18n/Language';
+import {
+  LanguageOption, LANGUAGES, LangCode, languageByCode, availableLanguages
+} from '../core/i18n/Language';
 import { t } from '../core/i18n/I18n';
-import { OfflineStore, CacheInfo } from '../core/services/OfflineStore';
 import { Logger } from '../utils/Logger';
 import { AppVersionInfo, getAppVersionInfo } from '../utils/AppInfo';
 import { Routes } from '../utils/RouteConstants';
 
 const TAG: string = 'SettingsPage';
 
+const SIZE_HEADER_ICON_EXPANDED = 24;
+const SIZE_HEADER_ICON_COLLAPSED = 20;
+const SIZE_ROW_ICON = 20;
+const SIZE_ROW_BOX = 40;
+const SIZE_CHEVRON = 20;
+const SIZE_TOGGLE_BOX = 22;
+const SIZE_LANG_SHEET_CLOSE = 18;
+const SIZE_LANG_SHEET_CHECK = 18;
+
 interface ThemeOption {
   mode: ThemeMode;
   labelKey: string;
   subtitleKey: string;
-  icon: string;
+  iconRes: Resource;
 }
 
 @Entry
@@ -35,11 +45,6 @@ struct SettingsPage {
   @State private currentLang: LangCode = 'en';
   @State private langPickerOpen: boolean = false;
 
-  @State private cacheFileCount: number = 0;
-  @State private cacheTotalBytes: number = 0;
-  @State private cacheLoading: boolean = true;
-  @State private cacheClearing: boolean = false;
-
   @StorageLink('languageVersion') langVersion: number = 0;
 
   private readonly options: ThemeOption[] = [
@@ -47,19 +52,19 @@ struct SettingsPage {
       mode: ThemeMode.LIGHT,
       labelKey: 'set.theme.light',
       subtitleKey: 'set.theme.lightSub',
-      icon: '☀'
+      iconRes: $r('app.media.ic_sun')
     },
     {
       mode: ThemeMode.DARK,
       labelKey: 'set.theme.dark',
       subtitleKey: 'set.theme.darkSub',
-      icon: '☾'
+      iconRes: $r('app.media.ic_moon')
     },
     {
       mode: ThemeMode.SYSTEM,
       labelKey: 'set.theme.system',
       subtitleKey: 'set.theme.systemSub',
-      icon: '⚙'
+      iconRes: $r('app.media.ic_settings')
     }
   ];
 
@@ -71,12 +76,21 @@ struct SettingsPage {
   aboutToAppear(): void {
     ThemeManager.get().subscribe(this.onThemeChange);
     this.currentLang = LanguageManager.get();
-    this.loadCacheInfo();
     this.loadUiPrefs();
   }
 
   aboutToDisappear(): void {
     ThemeManager.get().unsubscribe(this.onThemeChange);
+  }
+
+  @Builder
+  appIcon(media: Resource, size: number, color: string) {
+    Image(media)
+      .width(size)
+      .height(size)
+      .fillColor(color)
+      .draggable(false)
+      .objectFit(ImageFit.Contain)
   }
 
   private async loadUiPrefs(): Promise<void> {
@@ -88,71 +102,6 @@ struct SettingsPage {
       const err: Error = e as Error;
       Logger.error(TAG, `loadUiPrefs failed: ${err.message}`);
     }
-  }
-
-  private async loadCacheInfo(): Promise<void> {
-    this.cacheLoading = true;
-    try {
-      const info: CacheInfo = await OfflineStore.getCacheInfo();
-      this.cacheFileCount = info.fileCount;
-      this.cacheTotalBytes = info.totalBytes;
-    } catch (e) {
-      const err: Error = e as Error;
-      Logger.error(TAG, `loadCacheInfo failed: ${err.message}`);
-    } finally {
-      this.cacheLoading = false;
-    }
-  }
-
-  private onClearCache(): void {
-    if (this.cacheFileCount === 0) return;
-
-    promptAction.showDialog({
-      title: t('set.cache.confirm'),
-      message: `${this.cacheFileCount} ${t('set.cache.multi')} (${SettingsPage.formatSize(this.cacheTotalBytes)})`,
-      buttons: [
-        { text: t('common.cancel'), color: '#666666' },
-        { text: t('set.cache.clear'), color: '#D32F2F' }
-      ]
-    })
-      .then(async (r: promptAction.ShowDialogSuccessResponse) => {
-        if (r.index !== 1) return;
-
-        this.cacheClearing = true;
-        try {
-          await OfflineStore.clearAll();
-          this.cacheFileCount = 0;
-          this.cacheTotalBytes = 0;
-          promptAction.showToast({ message: t('set.cache.cleared') });
-        } catch (e) {
-          const err: Error = e as Error;
-          Logger.error(TAG, `clearAll failed: ${err.message}`);
-          promptAction.showToast({
-            message: `${t('set.cache.failed')}: ${err.message}`
-          });
-        } finally {
-          this.cacheClearing = false;
-        }
-      })
-      .catch(() => { /* dismissed */ });
-  }
-
-  private static formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  private cacheSummary(): string {
-    if (this.cacheLoading) return t('set.cache.calc');
-    if (this.cacheFileCount === 0) return t('set.cache.none');
-    const sizeStr: string = SettingsPage.formatSize(this.cacheTotalBytes);
-    return this.cacheFileCount === 1
-      ? `${t('set.cache.single')} · ${sizeStr}`
-      : `${this.cacheFileCount} ${t('set.cache.multi')} · ${sizeStr}`;
   }
 
   private versionLabel(): string {
@@ -209,18 +158,6 @@ struct SettingsPage {
 
             Column() {
               this.buildLanguageRow()
-            }
-            .width('100%')
-            .backgroundColor(this.theme.surface)
-            .borderRadius(14)
-
-            // ---- Storage ----
-            this.buildSectionLabel(t('set.section.store'))
-
-            Column() {
-              this.buildStorageHeader()
-              Divider().color(this.theme.divider).margin({ left: 20, right: 20 })
-              this.buildClearCacheRow()
             }
             .width('100%')
             .backgroundColor(this.theme.surface)
@@ -284,12 +221,17 @@ struct SettingsPage {
   @Builder
   buildHeader() {
     Row({ space: 12 }) {
-      Text('←')
-        .fontSize(this.headerCollapsed ? 20 : 24)
-        .fontColor(this.theme.textPrimary)
-        .width(this.headerCollapsed ? 32 : 40)
-        .textAlign(TextAlign.Center)
-        .onClick(() => { router.back(); })
+      Row() {
+        this.appIcon(
+          $r('app.media.ic_back'),
+          this.headerCollapsed ? SIZE_HEADER_ICON_COLLAPSED : SIZE_HEADER_ICON_EXPANDED,
+          this.theme.textPrimary
+        )
+      }
+      .width(this.headerCollapsed ? 36 : 44)
+      .height(this.headerCollapsed ? 36 : 44)
+      .justifyContent(FlexAlign.Center)
+      .onClick(() => { router.back(); })
 
       if (!this.headerCollapsed) {
         Text(t('set.title'))
@@ -302,15 +244,15 @@ struct SettingsPage {
         Row().layoutWeight(1)
       }
 
-      Row().width(this.headerCollapsed ? 32 : 40)
+      Row().width(this.headerCollapsed ? 36 : 44)
     }
     .width('100%')
-    .height(this.headerCollapsed ? 40 : 52)
+    .height(this.headerCollapsed ? 44 : 56)
     .padding({
       left: 8,
       right: 8,
-      top: this.headerCollapsed ? 6 : 12,
-      bottom: this.headerCollapsed ? 6 : 12
+      top: this.headerCollapsed ? 4 : 8,
+      bottom: this.headerCollapsed ? 4 : 8
     })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(this.theme.background)
@@ -335,11 +277,13 @@ struct SettingsPage {
   buildAppearanceHeader() {
     Row({ space: 14 }) {
       Column() {
-        Text(this.theme.isDark ? '☾' : '☀')
-          .fontSize(20)
-          .fontColor(this.theme.primary)
+        this.appIcon(
+          this.theme.isDark ? $r('app.media.ic_moon') : $r('app.media.ic_sun'),
+          SIZE_ROW_ICON, this.theme.primary
+        )
       }
-      .width(36).height(36).borderRadius(10)
+      .width(SIZE_ROW_BOX).height(SIZE_ROW_BOX)
+      .borderRadius(10)
       .backgroundColor(this.theme.primarySoft)
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center)
@@ -356,9 +300,12 @@ struct SettingsPage {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      Text(this.appearanceExpanded ? '▾' : '▸')
-        .fontSize(18).fontColor(this.theme.textTertiary)
-        .width(24).textAlign(TextAlign.Center)
+      this.appIcon(
+        this.appearanceExpanded
+          ? $r('app.media.ic_chevron_down')
+          : $r('app.media.ic_chevron_right'),
+        SIZE_CHEVRON, this.theme.textTertiary
+      )
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 16 })
@@ -369,9 +316,12 @@ struct SettingsPage {
   @Builder
   buildOptionRow(option: ThemeOption) {
     Row({ space: 14 }) {
-      Text(option.icon)
-        .fontSize(18).fontColor(this.theme.textSecondary)
-        .width(36).height(36).textAlign(TextAlign.Center)
+      Column() {
+        this.appIcon(option.iconRes, SIZE_ROW_ICON, this.theme.textSecondary)
+      }
+      .width(SIZE_ROW_BOX).height(SIZE_ROW_BOX)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
 
       Column({ space: 2 }) {
         Text(t(option.labelKey))
@@ -390,7 +340,8 @@ struct SettingsPage {
             .backgroundColor(this.theme.primaryContrast)
         }
       }
-      .width(22).height(22).borderRadius(11)
+      .width(SIZE_TOGGLE_BOX).height(SIZE_TOGGLE_BOX)
+      .borderRadius(SIZE_TOGGLE_BOX / 2)
       .backgroundColor(this.currentMode === option.mode
         ? this.theme.primary : this.theme.background)
       .border({
@@ -416,9 +367,10 @@ struct SettingsPage {
   buildSidebarCollapseRow() {
     Row({ space: 14 }) {
       Column() {
-        Text('▸').fontSize(18).fontColor(this.theme.primary)
+        this.appIcon($r('app.media.ic_list'), SIZE_ROW_ICON, this.theme.primary)
       }
-      .width(36).height(36).borderRadius(10)
+      .width(SIZE_ROW_BOX).height(SIZE_ROW_BOX)
+      .borderRadius(10)
       .backgroundColor(this.theme.primarySoft)
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center)
@@ -458,9 +410,10 @@ struct SettingsPage {
   buildLanguageRow() {
     Row({ space: 14 }) {
       Column() {
-        Text('🌐').fontSize(18).fontColor(this.theme.primary)
+        this.appIcon($r('app.media.ic_language'), SIZE_ROW_ICON, this.theme.primary)
       }
-      .width(36).height(36).borderRadius(10)
+      .width(SIZE_ROW_BOX).height(SIZE_ROW_BOX)
+      .borderRadius(10)
       .backgroundColor(this.theme.primarySoft)
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center)
@@ -476,7 +429,8 @@ struct SettingsPage {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      Text('›').fontSize(20).fontColor(this.theme.textTertiary)
+      this.appIcon($r('app.media.ic_chevron_right'),
+        SIZE_CHEVRON, this.theme.textTertiary)
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 14, bottom: 14 })
@@ -505,10 +459,13 @@ struct SettingsPage {
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
 
-        Text('✕')
-          .fontSize(18).fontColor(this.theme.textSecondary)
-          .width(32).height(32).textAlign(TextAlign.Center)
-          .onClick(() => { this.langPickerOpen = false; })
+        Row() {
+          this.appIcon($r('app.media.ic_close'),
+            SIZE_LANG_SHEET_CLOSE, this.theme.textSecondary)
+        }
+        .width(36).height(36)
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => { this.langPickerOpen = false; })
       }
       .width('100%')
       .padding({ left: 20, right: 12, bottom: 12 })
@@ -518,7 +475,7 @@ struct SettingsPage {
 
       List({ space: 1 }) {
         ForEach(availableLanguages(), (lang: LanguageOption) => {
-           ListItem() {
+          ListItem() {
             Row({ space: 14 }) {
               Column({ space: 3 }) {
                 Text(lang.englishName)
@@ -532,10 +489,8 @@ struct SettingsPage {
               .layoutWeight(1)
 
               if (this.currentLang === lang.code) {
-                Text('✓')
-                  .fontSize(18)
-                  .fontColor(this.theme.primary)
-                  .fontWeight(FontWeight.Bold)
+                this.appIcon($r('app.media.ic_check'),
+                  SIZE_LANG_SHEET_CHECK, this.theme.primary)
               }
             }
             .width('100%')
@@ -565,63 +520,6 @@ struct SettingsPage {
   }
 
   @Builder
-  buildStorageHeader() {
-    Row({ space: 14 }) {
-      Column() {
-        Text('📦').fontSize(20)
-      }
-      .width(36).height(36).borderRadius(10)
-      .backgroundColor(this.theme.primarySoft)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-
-      Column({ space: 2 }) {
-        Text(t('set.offline'))
-          .fontSize(16).fontWeight(FontWeight.Medium)
-          .fontColor(this.theme.textPrimary)
-          .textAlign(TextAlign.Start).width('100%')
-        Text(this.cacheSummary())
-          .fontSize(12).fontColor(this.theme.textSecondary)
-          .textAlign(TextAlign.Start).width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      if (this.cacheLoading) {
-        LoadingProgress().width(20).height(20).color(this.theme.primary)
-      }
-    }
-    .width('100%')
-    .padding({ left: 20, right: 20, top: 16, bottom: 16 })
-    .alignItems(VerticalAlign.Center)
-  }
-
-  @Builder
-  buildClearCacheRow() {
-    Row({ space: 14 }) {
-      Text('🗑').fontSize(18)
-        .fontColor(this.cacheFileCount > 0 ? this.theme.error : this.theme.textTertiary)
-        .width(36).height(36).textAlign(TextAlign.Center)
-
-      Text(t('set.cache.clear'))
-        .fontSize(15)
-        .fontColor(this.cacheFileCount > 0 ? this.theme.error : this.theme.textTertiary)
-        .layoutWeight(1)
-
-      if (this.cacheClearing) {
-        LoadingProgress().width(18).height(18).color(this.theme.error)
-      }
-    }
-    .width('100%')
-    .padding({ left: 20, right: 20, top: 14, bottom: 14 })
-    .alignItems(VerticalAlign.Center)
-    .onClick(() => {
-      if (this.cacheFileCount === 0 || this.cacheClearing) return;
-      this.onClearCache();
-    })
-  }
-
-  @Builder
   buildAboutRow(label: string, value: string) {
     Row({ space: 12 }) {
       Text(label)
@@ -643,10 +541,16 @@ struct SettingsPage {
   @Builder
   buildPrivacyPolicyRow() {
     Row({ space: 12 }) {
-      Text('🔒').fontSize(16).width(24).textAlign(TextAlign.Center)
+      this.appIcon($r('app.media.ic_privacy_lock'),
+        SIZE_ROW_ICON, this.theme.primary)
+
       Text(t('set.privacy'))
-        .fontSize(15).fontColor(this.theme.primary).layoutWeight(1)
-      Text('›').fontSize(20).fontColor(this.theme.primary)
+        .fontSize(15)
+        .fontColor(this.theme.primary)
+        .layoutWeight(1)
+
+      this.appIcon($r('app.media.ic_chevron_right'),
+        SIZE_CHEVRON, this.theme.primary)
     }
     .width('100%')
     .padding({ left: 20, right: 20, top: 16, bottom: 16 })

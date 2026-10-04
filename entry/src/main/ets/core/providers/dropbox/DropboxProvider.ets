@@ -14,6 +14,8 @@ import { LocalFileService } from '../../../utils/FileUtil';
 import { formatError } from '../../../utils/ErrorFormatter';
 import { DropboxConfig } from '../../../config/DropboxConfig';
 import { Logger } from '../../../utils/Logger';
+import { StorageInfo, createStorageInfo } from '../../models/StorageInfo';
+import { DropboxSpaceUsage } from './DropboxMapper';
 
 const TAG: string = 'DropboxProvider';
 
@@ -57,6 +59,16 @@ export class DropboxProvider implements ICloudProvider {
       provider: this.providerType
     };
     return profile;
+  }
+
+  async getStorageInfo(): Promise<StorageInfo> {
+    const usage: DropboxSpaceUsage =
+      await this.run(t => this.api.getSpaceUsage(t));
+    const allocated: number =
+      usage.allocation !== undefined
+        && usage.allocation.allocated !== undefined
+        ? usage.allocation.allocated : 0;
+    return createStorageInfo(usage.used, allocated);
   }
 
   // ===========================================================================

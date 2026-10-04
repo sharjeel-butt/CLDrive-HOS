@@ -8,7 +8,8 @@ import {
   DropboxListFolderContinueResponse,
   DropboxSearchResponse,
   DropboxSearchMatch,
-  DropboxCurrentAccount
+  DropboxCurrentAccount,
+  DropboxSpaceUsage
 } from './DropboxMapper';
 import { http } from '@kit.NetworkKit';
 import { Logger } from '../../../utils/Logger';
@@ -153,6 +154,14 @@ export class DropboxApiClient {
       .bearer(accessToken)
       .jsonBody(emptyBody)
       .executeJson<DropboxCurrentAccount>();
+  }
+
+  async getSpaceUsage(accessToken: string): Promise<DropboxSpaceUsage> {
+    const emptyBody: EmptyBody = {};
+    return RequestBuilder.post(`${this.base}/users/get_space_usage`)
+      .bearer(accessToken)
+      .jsonBody(emptyBody)
+      .executeJson<DropboxSpaceUsage>();
   }
 
   // ===========================================================================

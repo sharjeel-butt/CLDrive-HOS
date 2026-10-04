@@ -1,6 +1,7 @@
 import { CloudItem } from '../models/CloudItem';
 import { UserProfile } from '../models/UserProfile';
 import { DownloadInfo } from '../models/DownloadInfo';
+import { StorageInfo } from '../models/StorageInfo';
 
 export interface ICloudProvider {
   readonly providerType: string;
@@ -9,6 +10,13 @@ export interface ICloudProvider {
   // Identity
   // ---------------------------------------------------------------------------
   getCurrentUser(): Promise<UserProfile>;
+
+  /**
+   * Fetch the account's cloud storage quota. Returns used and total
+   * bytes; total <= 0 indicates the provider reports unlimited or
+   * does not expose quota.
+   */
+  getStorageInfo(): Promise<StorageInfo>;
 
   // ---------------------------------------------------------------------------
   // Listing

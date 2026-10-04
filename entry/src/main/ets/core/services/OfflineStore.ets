@@ -122,6 +122,26 @@ export class OfflineStore {
   }
 
   /**
+   * Return cache stats narrowed to a single account. Used by the
+   * sidebar storage card so the count reflects files cached from
+   * the currently active drive.
+   */
+  static async getCacheInfoForAccount(accountId: string): Promise<CacheInfo> {
+    const records = await OfflineStore.getAll();
+    let totalBytes: number = 0;
+    let fileCount: number = 0;
+    for (let i = 0; i < records.length; i++) {
+      if (records[i].accountId !== accountId) continue;
+      try {
+        const stat = fs.statSync(records[i].localPath);
+        totalBytes += stat.size;
+        fileCount++;
+      } catch (_) { /* skip missing */ }
+    }
+    return { fileCount, totalBytes };
+  }
+
+  /**
    * Delete every cached offline file and clear the registry.
    */
   static async clearAll(): Promise<void> {
@@ -134,4 +154,27 @@ export class OfflineStore {
     await OfflineStore.save([]);
     Logger.info(TAG, 'Cleared all offline files.');
   }
+
+  /**
+   * Delete every cached file belonging to a single account and drop
+   * its records from the registry. Other accounts are untouched.
+   */
+  static async clearForAccount(accountId: string): Promise<void> {
+    const all = await OfflineStore.getAll();
+    const kept: OfflineFileRecord[] = [];
+
+    for (let i = 0; i < all.length; i++) {
+      const r: OfflineFileRecord = all[i];
+      if (r.accountId === accountId) {
+        try {
+          fs.unlinkSync(r.localPath);
+        } catch (_) { /* already gone */ }
+      } else {
+        kept.push(r);
+      }
+    }
+    await OfflineStore.save(kept);
+    Logger.info(TAG, `Cleared offline files for account ${accountId}`);
+  }
 }
+

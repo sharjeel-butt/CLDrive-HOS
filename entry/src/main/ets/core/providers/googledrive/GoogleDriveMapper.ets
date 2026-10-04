@@ -17,28 +17,11 @@ export interface GoogleAbout {
   user?: GoogleUser;
 }
 
-export interface GoogleFile {
-  id: string;
-  name: string;
-  mimeType: string;
-  size?: string;            // string in Drive API (may exceed 2^53)
-  createdTime?: string;     // RFC 3339
-  modifiedTime?: string;    // RFC 3339
-  parents?: string[];
-  webViewLink?: string;
-  webContentLink?: string;
-  thumbnailLink?: string;
-  iconLink?: string;
-  trashed?: boolean;
-  explicitlyTrashed?: boolean;
-  shortcutDetails?: GoogleShortcutDetails;
-  capabilities?: GoogleCapabilities;
-  // Google Drive's authoritative extension fields.
-  fileExtension?: string;
-  fullFileExtension?: string;
+export interface GoogleOwner {
+  me?: boolean;
+  emailAddress?: string;
+  displayName?: string;
 }
-
-
 
 export interface GoogleShortcutDetails {
   targetId: string;
@@ -51,6 +34,40 @@ export interface GoogleCapabilities {
   canRename?: boolean;
   canDelete?: boolean;
   canCopy?: boolean;
+}
+
+export interface GoogleStorageQuota {
+  limit?: string;
+  usage?: string;
+  usageInDrive?: string;
+  usageInDriveTrash?: string;
+}
+
+export interface GoogleAboutQuota {
+  storageQuota?: GoogleStorageQuota;
+}
+
+export interface GoogleFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size?: string;
+  createdTime?: string;
+  modifiedTime?: string;
+  parents?: string[];
+  webViewLink?: string;
+  webContentLink?: string;
+  thumbnailLink?: string;
+  iconLink?: string;
+  trashed?: boolean;
+  explicitlyTrashed?: boolean;
+  ownedByMe?: boolean;
+  shared?: boolean;
+  owners?: GoogleOwner[];
+  shortcutDetails?: GoogleShortcutDetails;
+  capabilities?: GoogleCapabilities;
+  fileExtension?: string;
+  fullFileExtension?: string;
 }
 
 export interface GoogleFileListResponse {
@@ -69,6 +86,7 @@ export const MIME_GOOGLE_SLIDE: string = 'application/vnd.google-apps.presentati
 export const MIME_GOOGLE_DRAWING: string = 'application/vnd.google-apps.drawing';
 export const MIME_GOOGLE_FORM: string = 'application/vnd.google-apps.form';
 export const MIME_GOOGLE_SHORTCUT: string = 'application/vnd.google-apps.shortcut';
+
 const GOOGLE_NATIVE_PREFIX: string = 'application/vnd.google-apps.';
 
 export function isGoogleNativeFormat(mimeType: string): boolean {
@@ -87,13 +105,27 @@ export function isFolderMime(mimeType: string): boolean {
 export class GoogleDriveMapper {
 
   static toCloudItem(file: GoogleFile): CloudItem {
-    const isFolder: boolean = isFolderMime(file.mimeType);
+    // Shortcuts are pointers. Resolve them to the target resource so
+    // downloads and folder listings reach real content.
+    let shortcut: GoogleShortcutDetails | undefined = undefined;
+    if (file.mimeType === MIME_GOOGLE_SHORTCUT) {
+      shortcut = file.shortcutDetails;
+    }
 
-    // Google Drive's own extension field is authoritative.
-    // Fall back to a MIME-derived extension only if Google didn't supply one.
+    let effectiveId: string = file.id;
+    let effectiveMime: string = file.mimeType;
+
+    if (shortcut !== undefined) {
+      effectiveId = shortcut.targetId;
+      effectiveMime = shortcut.targetMimeType;
+    }
+
+    const isFolder: boolean = isFolderMime(effectiveMime);
+
     const displayName: string = isFolder
       ? file.name
-      : GoogleDriveMapper.resolveDisplayName(file);
+      : GoogleDriveMapper.resolveDisplayName(file.name, effectiveMime,
+        file.fileExtension);
 
     let size: number | undefined = undefined;
     if (!isFolder && file.size !== undefined && file.size.length > 0) {
@@ -101,26 +133,43 @@ export class GoogleDriveMapper {
       if (!isNaN(parsed)) size = parsed;
     }
 
-    const modifiedAt: number = file.modifiedTime
+    const modifiedAt: number = file.modifiedTime !== undefined
       ? Date.parse(file.modifiedTime)
       : Date.now();
 
-    const createdAt: number | undefined = file.createdTime
-      ? Date.parse(file.createdTime)
-      : undefined;
+    let createdAt: number | undefined = undefined;
+    if (file.createdTime !== undefined) {
+      createdAt = Date.parse(file.createdTime);
+    }
 
-    const parentId: string | undefined =
-      file.parents !== undefined && file.parents.length > 0
-        ? file.parents[0]
-        : undefined;
+    let parentId: string | undefined = undefined;
+    if (file.parents !== undefined && file.parents.length > 0) {
+      parentId = file.parents[0];
+    }
 
-    return {
-      id: file.id,
+    // Shared = someone else owns it. ownedByMe is authoritative.
+    let isShared: boolean = false;
+    if (file.ownedByMe !== undefined) {
+      isShared = file.ownedByMe === false;
+    } else if (file.owners !== undefined && file.owners.length > 0) {
+      const me: boolean | undefined = file.owners[0].me;
+      if (me !== undefined) isShared = me === false;
+    }
+
+    // canDownload is undefined unless the provider reports it.
+    let canDownload: boolean | undefined = undefined;
+    if (file.capabilities !== undefined
+      && file.capabilities.canDownload !== undefined) {
+      canDownload = file.capabilities.canDownload;
+    }
+
+    const result: CloudItem = {
+      id: effectiveId,
       provider: CloudProviderType.GOOGLE_DRIVE,
       name: displayName,
       type: isFolder ? CloudItemType.FOLDER : CloudItemType.FILE,
       size: size,
-      mimeType: file.mimeType,
+      mimeType: effectiveMime,
       modifiedAt: modifiedAt,
       createdAt: createdAt,
       parentId: parentId,
@@ -128,57 +177,35 @@ export class GoogleDriveMapper {
       webUrl: file.webViewLink,
       thumbnailUrl: file.thumbnailLink,
       etag: undefined,
-      rawMetadata: file
+      rawMetadata: file,
+      isShared: isShared,
+      canDownload: canDownload
     };
+    return result;
   }
 
   static toCloudItems(files: GoogleFile[]): CloudItem[] {
-    return files.map(GoogleDriveMapper.toCloudItem);
+    const out: CloudItem[] = [];
+    for (let i = 0; i < files.length; i++) {
+      out.push(GoogleDriveMapper.toCloudItem(files[i]));
+    }
+    return out;
   }
 
   /**
-   * Build the display name, ensuring it carries the extension.
-   *
-   * Priority order:
-   *   1. If Google reports a `fileExtension`, use it.
-   *   2. Otherwise, derive it from the MIME type as a last resort.
-   *   3. Google native formats (Docs/Sheets/Slides) have no extension
-   *      and are returned as-is.
+   * Build the display name with an extension when appropriate.
+   * Uses the effective MIME (a shortcut's target MIME, not the
+   * shortcut MIME) plus Google's own fileExtension if reported.
    */
-  private static resolveDisplayName(file: GoogleFile): string {
-    const preferredExt: string =
-      file.fileExtension !== undefined && file.fileExtension.length > 0
-        ? file.fileExtension
-        : '';
-
-    return ensureFileExtension(file.name, file.mimeType, preferredExt);
+  private static resolveDisplayName(
+    name: string,
+    effectiveMime: string,
+    fileExtension: string | undefined
+  ): string {
+    let preferredExt: string = '';
+    if (fileExtension !== undefined && fileExtension.length > 0) {
+      preferredExt = fileExtension;
+    }
+    return ensureFileExtension(name, effectiveMime, preferredExt);
   }
-
-  private static extensionFromMime(mimeType: string): string {
-    const mime = mimeType.toLowerCase();
-    if (mime.startsWith('application/vnd.google-apps.')) return '';
-    if (mime === 'application/pdf') return 'pdf';
-    if (mime === 'application/zip') return 'zip';
-    if (mime === 'application/json') return 'json';
-    if (mime === 'application/xml') return 'xml';
-    if (mime === 'application/msword') return 'doc';
-    if (mime.indexOf('wordprocessingml') >= 0) return 'docx';
-    if (mime === 'application/vnd.ms-excel') return 'xls';
-    if (mime.indexOf('spreadsheetml') >= 0) return 'xlsx';
-    if (mime === 'application/vnd.ms-powerpoint') return 'ppt';
-    if (mime.indexOf('presentationml') >= 0) return 'pptx';
-    if (mime === 'text/plain') return 'txt';
-    if (mime === 'text/csv') return 'csv';
-    if (mime === 'text/html') return 'html';
-    if (mime === 'image/jpeg') return 'jpg';
-    if (mime === 'image/png') return 'png';
-    if (mime === 'image/gif') return 'gif';
-    if (mime === 'image/webp') return 'webp';
-    if (mime === 'image/svg+xml') return 'svg';
-    if (mime === 'audio/mpeg') return 'mp3';
-    if (mime === 'video/mp4') return 'mp4';
-    if (mime === 'video/quicktime') return 'mov';
-    return '';
-  }
-
 }

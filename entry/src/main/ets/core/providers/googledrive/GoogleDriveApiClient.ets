@@ -5,6 +5,8 @@ import {
   GoogleAbout,
   GoogleFile,
   GoogleFileListResponse,
+  GoogleAboutQuota,
+  GoogleStorageQuota,
   MIME_FOLDER
 } from './GoogleDriveMapper';
 import { http } from '@kit.NetworkKit';
@@ -72,7 +74,10 @@ export class GoogleDriveApiClient {
     'id,name,mimeType,size,createdTime,modifiedTime,parents,' +
       'fileExtension,fullFileExtension,' +
       'webViewLink,webContentLink,thumbnailLink,iconLink,' +
-      'trashed,capabilities(canDownload,canEdit,canRename,canDelete,canCopy)';
+      'trashed,ownedByMe,shared,' +
+      'owners(me,emailAddress,displayName),' +
+      'shortcutDetails(targetId,targetMimeType),' +
+      'capabilities(canDownload,canEdit,canRename,canDelete,canCopy)';
 
   async listChildren(
     accessToken: string,
@@ -83,6 +88,8 @@ export class GoogleDriveApiClient {
     const url = `${this.base}/files?q=${encodeURIComponent(q)}` +
       `&fields=files(${GoogleDriveApiClient.FILE_FIELDS}),nextPageToken` +
       `&pageSize=1000&orderBy=folder,name`;
+
+
 
     const res = await RequestBuilder.get(url)
       .bearer(accessToken)
@@ -96,6 +103,14 @@ export class GoogleDriveApiClient {
     return RequestBuilder.get(url)
       .bearer(accessToken)
       .executeJson<GoogleFile>();
+  }
+
+  async getStorageQuota(accessToken: string): Promise<GoogleStorageQuota | null> {
+    const url = `${this.base}/about?fields=storageQuota`;
+    const res: GoogleAboutQuota = await RequestBuilder.get(url)
+      .bearer(accessToken)
+      .executeJson<GoogleAboutQuota>();
+    return res.storageQuota !== undefined ? res.storageQuota : null;
   }
 
   async search(accessToken: string, query: string): Promise<GoogleFile[]> {

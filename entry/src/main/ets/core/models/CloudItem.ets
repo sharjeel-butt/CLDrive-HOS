@@ -6,7 +6,7 @@ export interface CloudItem {
   name: string;
   type: CloudItemType;
   size?: number;
-  childCount?: number; // number of items inside a folder
+  childCount?: number;
   mimeType?: string;
   modifiedAt: number;
   createdAt?: number;
@@ -16,6 +16,8 @@ export interface CloudItem {
   thumbnailUrl?: string;
   etag?: string;
   rawMetadata?: object;
+  isShared?: boolean;
+  canDownload?: boolean;
 }
 
 export function createFolderItem(

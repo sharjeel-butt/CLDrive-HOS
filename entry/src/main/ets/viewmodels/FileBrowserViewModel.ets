@@ -167,7 +167,11 @@ export class FileBrowserViewModel {
   private cloudProvider: ICloudProvider | null = null;
   private crumbScroller: Scroller | null = null;
   private context: common.UIAbilityContext | null = null;
-
+  // ---- Sorting ----
+  sortKey: string = 'name_asc';  // 'name_asc' | 'name_desc' | 'date_desc' | 'date_asc' | 'size_desc'
+  // ---- View preferences ----
+  viewMode: string = 'list';     // 'list' | 'grid'
+  activeFilter: string = 'all';  // 'all' | 'image' | 'video' | 'audio' | 'document' | 'other'
   attachScroller(s: Scroller): void { this.crumbScroller = s; }
   setContext(c: common.UIAbilityContext): void { this.context = c; }
 
@@ -306,7 +310,8 @@ export class FileBrowserViewModel {
     this.isLoading = true;
     this.errorMessage = '';
     try {
-      this.items = await this.cloudProvider.listChildren(folderId);
+      const fetched: CloudItem[] = await this.cloudProvider.listChildren(folderId);
+      this.items = this.applySort(fetched);
       this.currentFolderId = folderId;
     } catch (e) {
       const readable: string = formatError(e as Error);
@@ -320,9 +325,9 @@ export class FileBrowserViewModel {
   async refreshCurrentFolder(): Promise<boolean> {
     if (this.cloudProvider === null) return false;
     try {
-      const items: CloudItem[] =
+      const fetched: CloudItem[] =
         await this.cloudProvider.listChildren(this.currentFolderId);
-      this.items = items;
+      this.items = this.applySort(fetched);
       this.errorMessage = '';
       return true;
     } catch (e) {
@@ -335,10 +340,145 @@ export class FileBrowserViewModel {
     }
   }
 
+  setSortKey(key: string): void {
+    if (this.sortKey === key) return;
+    this.sortKey = key;
+    this.items = this.applySort(this.items);
+  }
+
+  private applySort(items: CloudItem[]): CloudItem[] {
+    const sorted: CloudItem[] = items.slice();
+    const key: string = this.sortKey;
+
+    sorted.sort((a: CloudItem, b: CloudItem): number => {
+      // Folders always first
+      const aIsFolder: boolean = a.type === CloudItemType.FOLDER;
+      const bIsFolder: boolean = b.type === CloudItemType.FOLDER;
+      if (aIsFolder && !bIsFolder) return -1;
+      if (!aIsFolder && bIsFolder) return 1;
+
+      if (key === 'name_asc') {
+        return a.name.toLowerCase() < b.name.toLowerCase() ? -1
+          : a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0;
+      }
+      if (key === 'name_desc') {
+        return a.name.toLowerCase() > b.name.toLowerCase() ? -1
+          : a.name.toLowerCase() < b.name.toLowerCase() ? 1 : 0;
+      }
+      if (key === 'date_desc') {
+        return b.modifiedAt - a.modifiedAt;
+      }
+      if (key === 'date_asc') {
+        return a.modifiedAt - b.modifiedAt;
+      }
+      if (key === 'size_desc') {
+        const aSize: number = a.size !== undefined ? a.size : 0;
+        const bSize: number = b.size !== undefined ? b.size : 0;
+        return bSize - aSize;
+      }
+      return 0;
+    });
+
+    return sorted;
+  }
+
+  /**
+   * Human-readable relative time — "Just now", "3m ago", "2h ago",
+   * "5d ago", or an absolute date if older than 30 days.
+   */
+  static relativeDate(ms: number): string {
+    const diff: number = Date.now() - ms;
+    if (diff < 0) return t('fb.relativeJustNow');
+
+    const minutes: number = Math.floor(diff / 60000);
+    if (minutes < 1) return t('fb.relativeJustNow');
+    if (minutes < 60) {
+      return tNamed('fb.relativeMinutes', new Map([['n', String(minutes)]]));
+    }
+
+    const hours: number = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return tNamed('fb.relativeHours', new Map([['n', String(hours)]]));
+    }
+
+    const days: number = Math.floor(hours / 24);
+    if (days < 30) {
+      return tNamed('fb.relativeDays', new Map([['n', String(days)]]));
+    }
+
+    return FileBrowserViewModel.formatDate(ms);
+  }
+
   async openFolder(item: CloudItem): Promise<void> {
     this.crumbs = [...this.crumbs, { id: item.id, name: item.name }];
     await this.loadFolder(item.id);
     this.scrollCrumbsToEnd();
+  }
+
+  toggleViewMode(): void {
+    this.viewMode = this.viewMode === 'list' ? 'grid' : 'list';
+  }
+
+  setFilter(key: string): void {
+    if (this.activeFilter === key) return;
+    this.activeFilter = key;
+  }
+
+  clearFilter(): void {
+    this.activeFilter = 'all';
+  }
+
+  /**
+   * Return the current folder's items narrowed by the active filter.
+   * Filter matching is by MIME prefix; folders are included in the
+   * 'all' view only and are excluded when a media filter is active.
+   */
+  filteredItems(): CloudItem[] {
+    if (this.activeFilter === 'all') return this.items;
+
+    const out: CloudItem[] = [];
+    for (let i = 0; i < this.items.length; i++) {
+      const it: CloudItem = this.items[i];
+      if (it.type === CloudItemType.FOLDER) continue;
+
+      const mime: string = it.mimeType !== undefined
+        ? it.mimeType.toLowerCase() : '';
+
+      if (this.activeFilter === 'image' && mime.startsWith('image/')) {
+        out.push(it);
+      } else if (this.activeFilter === 'video' && mime.startsWith('video/')) {
+        out.push(it);
+      } else if (this.activeFilter === 'audio' && mime.startsWith('audio/')) {
+        out.push(it);
+      } else if (this.activeFilter === 'document'
+        && FileBrowserViewModel.isDocumentMime(mime)) {
+        out.push(it);
+      } else if (this.activeFilter === 'other'
+        && !mime.startsWith('image/')
+        && !mime.startsWith('video/')
+        && !mime.startsWith('audio/')
+        && !FileBrowserViewModel.isDocumentMime(mime)) {
+        out.push(it);
+      }
+    }
+    return out;
+  }
+
+  static isDocumentMime(mime: string): boolean {
+    if (mime.length === 0) return false;
+    if (mime.startsWith('text/')) return true;
+    if (mime === 'application/pdf') return true;
+    if (mime === 'application/json') return true;
+    if (mime === 'application/xml') return true;
+    if (mime === 'application/msword') return true;
+    if (mime === 'application/vnd.ms-excel') return true;
+    if (mime === 'application/vnd.ms-powerpoint') return true;
+    if (mime.indexOf('word') >= 0) return true;
+    if (mime.indexOf('document') >= 0) return true;
+    if (mime.indexOf('spreadsheet') >= 0) return true;
+    if (mime.indexOf('presentation') >= 0) return true;
+    if (mime.indexOf('opendocument') >= 0) return true;
+    return false;
   }
 
   async goToCrumb(index: number): Promise<void> {
@@ -440,7 +580,9 @@ export class FileBrowserViewModel {
       this.crumbs = [{ id: item.id, name: item.name }];
       await this.loadFolder(item.id);
     } else {
-      this.selectedItem = item;
+      // Keep search open so the user returns to the results list
+      // after the system viewer closes.
+      await this.openFile(item);
     }
   }
 
@@ -1316,6 +1458,15 @@ export class FileBrowserViewModel {
   // ===========================================================================
   // Offline files
   // ===========================================================================
+
+  /**
+   * Public entry point for refreshing the offline badge list. Called
+   * by the file browser page after clearing cached files from the
+   * sidebar so the row badges update without a full folder reload.
+   */
+  async loadOfflineIdsPublic(): Promise<void> {
+    await this.loadOfflineIds();
+  }
 
   private async loadOfflineIds(): Promise<void> {
     const records: OfflineFileRecord[] = await OfflineStore.getAll();

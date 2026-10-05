@@ -1,4 +1,4 @@
-# CLDrive
+# CLDrive Manager
 
 **A unified cloud file manager for HarmonyOS.**
 
